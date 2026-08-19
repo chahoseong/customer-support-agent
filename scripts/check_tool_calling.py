@@ -22,12 +22,14 @@ def get_required_env(name: str) -> str:
 
 
 def main() -> int:
+    # Configure the SDK client for the model server selected at runtime.
     base_url = get_required_env("LLM_BASE_URL")
     model_name = get_required_env("LLM_MODEL_NAME")
     api_key = os.getenv("LLM_API_KEY", "").strip() or "no-api-key"
 
     client = OpenAI(base_url=base_url, api_key=api_key)
 
+    # Define the deterministic tool contract and prompt used by the probe.
     tools: list[ChatCompletionFunctionToolParam] = [
         {
             "type": "function",
@@ -61,6 +63,7 @@ def main() -> int:
         }
     ]
 
+    # Force the named tool call to isolate protocol compatibility from tool selection.
     tool_choice: ChatCompletionNamedToolChoiceParam = {
         "type": "function",
         "function": {"name": TOOL_NAME},
@@ -74,6 +77,7 @@ def main() -> int:
         parallel_tool_calls=False,
     )
 
+    # Validate the OpenAI-compatible response shape and selected tool.
     tool_calls = response.choices[0].message.tool_calls or []
 
     if len(tool_calls) != 1:
@@ -91,6 +95,7 @@ def main() -> int:
             f"Expected tool name {TOOL_NAME!r}, got {tool_call.function.name!r}"
         )
 
+    # Decode and verify the tool arguments after the structural checks pass.
     raw_arguments = tool_call.function.arguments
 
     try:
