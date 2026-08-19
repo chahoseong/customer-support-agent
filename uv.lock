@@ -107,6 +107,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "openai" },
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -117,7 +118,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "openai", specifier = ">=3.3.0" }]
+requires-dist = [
+    { name = "openai", specifier = ">=3.3.0" },
+    { name = "pydantic", specifier = ">=2.13.4" },
+]
 
 [package.metadata.requires-dev]
 dev = [
