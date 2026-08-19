@@ -20,3 +20,20 @@ The user acts as the **driver**, responsible for writing the core implementation
 - Treat the roadmap as high-level guidance, not as an implementation plan or task list.
 - If a proposed change conflicts with the roadmap, point out the conflict before proceeding.
 - If new information suggests the roadmap should change, discuss the change with the user rather than updating it implicitly.
+
+## Commands
+
+- `uv run ruff check --fix <file_path>` - Apply safe lint fixes to one file during development.
+- `uv run ruff format <file_path>` - Format one file during development.
+- `uv run ruff check src scripts` - Verify all current Python source and utility scripts for lint violations without modifying them.
+- `uv run ruff format --check src scripts` - Verify the formatting of all current Python source and utility scripts without modifying them.
+- `uv run mypy` - Run static type checking on the Python paths configured in `pyproject.toml`.
+- `uv run mypy <file_path>` - Run static type checking on one file.
+
+## Testing
+
+- `uv run pytest -q` - Run the full test suite after completing a change.
+- `uv run pytest tests/<test_file>.py -q` - Run one test file while developing.
+- `uv run pytest tests/<test_file>.py::<test_name> -q` - Run the single test currently being implemented or fixed.
+- `uv run pytest tests/<test_file>.py -v` - Display every test case, including parametrized cases.
+- `uv run pytest tests/<test_file>.py::<test_name> -vv` - Investigate a failing test with detailed assertion output.
