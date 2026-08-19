@@ -59,6 +59,11 @@ $env:LLM_BASE_URL = "http://<llama-server-host>:8080/v1"
 $env:LLM_MODEL_NAME = "google/gemma-4-12B-it-qat-q4_0-gguf:Q4_0"
 ```
 
+위의 `http://` 예시는 loopback 또는 별도로 암호화되고 접근이 통제되는 개발
+네트워크에서만 사용합니다. API 키를 사용하거나 신뢰할 수 없는 네트워크를 통과한다면
+`https://`를 사용해야 합니다. `llama-server`는 OpenSSL 지원 빌드와
+`--ssl-key-file`, `--ssl-cert-file` 옵션으로 TLS를 구성할 수 있습니다.
+
 API 키가 필요한 서버라면 추가로 설정합니다. 키가 필요 없는 `llama-server`에서는 생략할
 수 있으며, 검사 스크립트가 `no-api-key`를 대신 사용합니다.
 
