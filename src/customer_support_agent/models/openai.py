@@ -1,19 +1,108 @@
+import json
 from collections.abc import Sequence
 
 from openai import OpenAI
 from openai.types.chat import (
     ChatCompletionFunctionToolParam,
+    ChatCompletionMessage,
+    ChatCompletionMessageFunctionToolCallParam,
     ChatCompletionMessageParam,
 )
 
 from customer_support_agent.messages import (
     ModelMessage,
-    ModelRequest,
     ModelResponse,
+    ToolCall,
     UserPromptPart,
 )
 from customer_support_agent.models.base import ChatModel
 from customer_support_agent.tools.definitions import ToolDefinition
+
+
+def _to_sdk_messages(
+    messages: Sequence[ModelMessage],
+) -> list[ChatCompletionMessageParam]:
+    sdk_messages: list[ChatCompletionMessageParam] = []
+
+    for message in messages:
+        if isinstance(message, ModelResponse):
+            sdk_tool_calls: list[ChatCompletionMessageFunctionToolCallParam] = [
+                {
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.name,
+                        "arguments": json.dumps(tool_call.arguments),
+                    },
+                }
+                for tool_call in message.tool_calls
+            ]
+            sdk_messages.append(
+                {
+                    "role": "assistant",
+                    "content": message.content,
+                    "tool_calls": sdk_tool_calls,
+                }
+            )
+            continue
+
+        for part in message.parts:
+            if isinstance(part, UserPromptPart):
+                sdk_messages.append(
+                    {
+                        "role": "user",
+                        "content": part.content,
+                    }
+                )
+            else:
+                sdk_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": part.tool_call_id,
+                        "content": json.dumps(part.result),
+                    }
+                )
+
+    return sdk_messages
+
+
+def _to_sdk_tools(
+    tools: Sequence[ToolDefinition],
+) -> list[ChatCompletionFunctionToolParam]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            },
+        }
+        for tool in tools
+    ]
+
+
+def _to_model_response(
+    response_message: ChatCompletionMessage,
+) -> ModelResponse:
+    tool_calls: list[ToolCall] = []
+
+    for sdk_tool_call in response_message.tool_calls or []:
+        if sdk_tool_call.type != "function":
+            raise NotImplementedError("Custom tool calls are not supported.")
+
+        tool_calls.append(
+            ToolCall(
+                id=sdk_tool_call.id,
+                name=sdk_tool_call.function.name,
+                arguments=json.loads(sdk_tool_call.function.arguments),
+            )
+        )
+
+    return ModelResponse(
+        content=response_message.content,
+        tool_calls=tuple(tool_calls),
+    )
 
 
 class OpenAIChatModel(ChatModel):
@@ -35,42 +124,11 @@ class OpenAIChatModel(ChatModel):
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
     ) -> ModelResponse:
-        sdk_messages: list[ChatCompletionMessageParam] = []
-
-        for message in messages:
-            if not isinstance(message, ModelRequest):
-                raise NotImplementedError("Model responses are not supported yet.")
-
-            for part in message.parts:
-                if not isinstance(part, UserPromptPart):
-                    raise NotImplementedError("Tool results are not supported yet.")
-
-                sdk_messages.append(
-                    {
-                        "role": "user",
-                        "content": part.content,
-                    }
-                )
-
-        sdk_tools: list[ChatCompletionFunctionToolParam] = [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                },
-            }
-            for tool in tools
-        ]
-
         completion = self._client.chat.completions.create(
             model=self._model_name,
-            messages=sdk_messages,
-            tools=sdk_tools,
+            messages=_to_sdk_messages(messages),
+            tools=_to_sdk_tools(tools),
             parallel_tool_calls=False,
         )
 
-        return ModelResponse(
-            content=completion.choices[0].message.content,
-        )
+        return _to_model_response(completion.choices[0].message)
