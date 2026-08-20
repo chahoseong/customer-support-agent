@@ -60,15 +60,10 @@ def verify_run(
             f"Expected tool result {expected_tool_result!r}, got {tool_results!r}"
         )
 
-    normalized_answer = answer.casefold()
+    expected_answer = f"RESULT: {ORDER_ID} | {EXPECTED_STATUS}"
 
-    if ORDER_ID.casefold() not in normalized_answer:
-        raise RuntimeError(f"Final answer does not contain {ORDER_ID!r}: {answer!r}")
-
-    if EXPECTED_STATUS.casefold() not in normalized_answer:
-        raise RuntimeError(
-            f"Final answer does not contain status {EXPECTED_STATUS!r}: {answer!r}"
-        )
+    if answer.strip().casefold() != expected_answer.casefold():
+        raise RuntimeError(f"Expected final answer {expected_answer!r}, got {answer!r}")
 
 
 def main() -> int:
@@ -87,9 +82,11 @@ def main() -> int:
 
     answer = agent.run(
         f"Use the get_order tool to look up {ORDER_ID}. "
-        "After the tool returns, include the exact order ID "
-        "and exact status value from the tool result in your "
-        "final answer."
+        "After the tool returns, respond with exactly one line "
+        "in this format without backticks: "
+        "RESULT: <order_id> | <status>. "
+        "Replace the placeholders with the exact values from "
+        "the tool result."
     )
 
     verify_run(model, answer)
