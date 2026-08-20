@@ -1,3 +1,4 @@
+from customer_support_agent.get_order import get_order
 from customer_support_agent.models import ChatModel
 
 
@@ -12,5 +13,20 @@ class Agent:
                 "content": user_message,
             }
         ]
-        response = self._model.generate(messages)
-        return response.content
+
+        while True:
+            response = self._model.generate(messages)
+
+            if response.tool_calls:
+                for tool_call in response.tool_calls:
+                    if tool_call.name != "get_order":
+                        raise ValueError(f"Unsupported tool: {tool_call.name}")
+
+                    get_order(tool_call.arguments)
+
+                continue
+
+            if response.content is None:
+                raise ValueError("Model response has no content.")
+
+            return response.content

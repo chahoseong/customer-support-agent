@@ -3,8 +3,16 @@ from dataclasses import dataclass
 
 
 @dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: object
+
+
+@dataclass
 class ModelResponse:
-    content: str
+    content: str | None = None
+    tool_calls: tuple[ToolCall, ...] = ()
 
 
 class ChatModel(ABC):
