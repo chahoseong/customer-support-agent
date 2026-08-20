@@ -1,0 +1,103 @@
+import os
+from collections.abc import Sequence
+
+from customer_support_agent.agent import Agent
+from customer_support_agent.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    ToolResultPart,
+)
+from customer_support_agent.models import ChatModel, OpenAIChatModel
+from customer_support_agent.tools.definitions import ToolDefinition
+
+ORDER_ID = "order-002"
+EXPECTED_STATUS = "shipped"
+
+
+class RecordingChatModel(ChatModel):
+    def __init__(self, model: ChatModel) -> None:
+        self._model = model
+        self.requests: list[tuple[ModelMessage, ...]] = []
+
+    def generate(
+        self,
+        messages: Sequence[ModelMessage],
+        tools: Sequence[ToolDefinition],
+    ) -> ModelResponse:
+        self.requests.append(tuple(messages))
+
+        return self._model.generate(messages, tools)
+
+
+def get_required_env(name: str) -> str:
+    value = os.getenv(name)
+
+    if value is None or not value.strip():
+        raise RuntimeError(f"{name} environment variable is required")
+
+    return value.strip()
+
+
+def verify_run(
+    model: RecordingChatModel,
+    answer: str,
+) -> None:
+    expected_tool_result = {
+        "order_id": ORDER_ID,
+        "status": EXPECTED_STATUS,
+    }
+    tool_results = [
+        part.result
+        for message in model.requests[-1]
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if isinstance(part, ToolResultPart)
+    ]
+
+    if expected_tool_result not in tool_results:
+        raise RuntimeError(
+            f"Expected tool result {expected_tool_result!r}, got {tool_results!r}"
+        )
+
+    normalized_answer = answer.casefold()
+
+    if ORDER_ID.casefold() not in normalized_answer:
+        raise RuntimeError(f"Final answer does not contain {ORDER_ID!r}: {answer!r}")
+
+    if EXPECTED_STATUS.casefold() not in normalized_answer:
+        raise RuntimeError(
+            f"Final answer does not contain status {EXPECTED_STATUS!r}: {answer!r}"
+        )
+
+
+def main() -> int:
+    base_url = get_required_env("LLM_BASE_URL")
+    model_name = get_required_env("LLM_MODEL_NAME")
+    api_key = os.getenv("LLM_API_KEY", "").strip() or "no-api-key"
+
+    model = RecordingChatModel(
+        OpenAIChatModel(
+            base_url=base_url,
+            model_name=model_name,
+            api_key=api_key,
+        )
+    )
+    agent = Agent(model)
+
+    answer = agent.run(
+        f"Use the get_order tool to look up {ORDER_ID}. "
+        "After the tool returns, include the exact order ID "
+        "and exact status value from the tool result in your "
+        "final answer."
+    )
+
+    verify_run(model, answer)
+
+    print(f"PASS: order_id={ORDER_ID!r}, status={EXPECTED_STATUS!r}, answer={answer!r}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
