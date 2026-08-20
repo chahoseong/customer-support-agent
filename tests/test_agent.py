@@ -161,3 +161,51 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
             second_tool_result_request,
         ),
     ]
+
+
+def test_agent_preserves_order_of_multiple_tool_calls_in_one_response() -> None:
+    tool_call_response = ModelResponse(
+        tool_calls=(
+            ToolCall(
+                id="call-1",
+                name="get_order",
+                arguments={"order_id": "order-002"},
+            ),
+            ToolCall(
+                id="call-2",
+                name="get_order",
+                arguments={"order_id": "order-001"},
+            ),
+        )
+    )
+    final_response = ModelResponse(
+        content="Order-002 has shipped and order-001 is processing."
+    )
+    model = TestModel(
+        [
+            tool_call_response,
+            final_response,
+        ]
+    )
+
+    result = Agent(model).run("Compare order-002 and order-001.")
+
+    assert result == "Order-002 has shipped and order-001 is processing."
+    assert model.requests[1][-1] == ModelRequest(
+        parts=(
+            ToolResultPart(
+                tool_call_id="call-1",
+                result={
+                    "order_id": "order-002",
+                    "status": "shipped",
+                },
+            ),
+            ToolResultPart(
+                tool_call_id="call-2",
+                result={
+                    "order_id": "order-001",
+                    "status": "processing",
+                },
+            ),
+        )
+    )
