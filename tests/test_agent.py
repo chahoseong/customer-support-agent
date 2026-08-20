@@ -2,7 +2,8 @@ from collections.abc import Sequence
 
 import pytest
 
-from customer_support_agent.agent import Agent
+import customer_support_agent.agent as agent_module
+from customer_support_agent.agent import Agent, AgentRunError
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
@@ -231,7 +232,7 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
         " \n\t ",
     ],
 )
-def test_agent_rejects_final_response_without_displayable_content(
+def test_agent_raises_invalid_model_response_for_content_without_displayable_text(
     content: str | None,
 ) -> None:
     model = ScriptedModel(
@@ -240,5 +241,184 @@ def test_agent_rejects_final_response_without_displayable_content(
         ]
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(AgentRunError) as exc_info:
         Agent(model).run("Where is my order?")
+
+    assert exc_info.value.code == "invalid_model_response"
+
+
+def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
+    tool_call_response = ModelResponse(
+        tool_calls=(
+            ToolCall(
+                id="call-1",
+                name="unknown_tool",
+                arguments={},
+            ),
+        )
+    )
+    tool_result_request = ModelRequest(
+        parts=(
+            ToolResultPart(
+                tool_call_id="call-1",
+                result={
+                    "error": {
+                        "code": "unknown_tool",
+                        "message": (
+                            "The requested tool is not available. "
+                            "Use an available tool instead."
+                        ),
+                    }
+                },
+            ),
+        )
+    )
+
+    model = ScriptedModel(
+        [
+            tool_call_response,
+            ModelResponse(content="I cannot use that tool."),
+        ]
+    )
+
+    result = Agent(model).run("Send a message.")
+
+    assert result == "I cannot use that tool."
+
+    second_model_messages = model.requests[1]
+
+    assert second_model_messages[-2:] == (
+        tool_call_response,
+        tool_result_request,
+    )
+
+
+def test_agent_returns_unexpected_tool_failure_to_model_and_continues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_get_order(_arguments: object) -> object:
+        raise RuntimeError("sensitive internal failure")
+
+    monkeypatch.setattr(agent_module, "get_order", fail_get_order)
+
+    tool_call_response = ModelResponse(
+        tool_calls=(
+            ToolCall(
+                id="call-1",
+                name="get_order",
+                arguments={"order_id": "order-001"},
+            ),
+        )
+    )
+    tool_result_request = ModelRequest(
+        parts=(
+            ToolResultPart(
+                tool_call_id="call-1",
+                result={
+                    "error": {
+                        "code": "tool_execution_failed",
+                        "message": (
+                            "The tool failed unexpectedly; do not assume a result."
+                        ),
+                    }
+                },
+            ),
+        )
+    )
+
+    model = ScriptedModel(
+        [
+            tool_call_response,
+            ModelResponse(content="I could not retrieve the order."),
+        ]
+    )
+
+    result = Agent(model).run("Where is order-001?")
+
+    assert result == "I could not retrieve the order."
+
+    second_model_messages = model.requests[1]
+
+    assert second_model_messages[-2:] == (
+        tool_call_response,
+        tool_result_request,
+    )
+
+
+def test_agent_wraps_model_failure_without_exposing_details() -> None:
+    model_error = RuntimeError("sensitive provider failure")
+
+    class FailingModel(ChatModel):
+        def generate(
+            self,
+            _messages: Sequence[ModelMessage],
+        ) -> ModelResponse:
+            raise model_error
+
+    with pytest.raises(AgentRunError) as exc_info:
+        Agent(FailingModel()).run("Where is my order?")
+
+    assert exc_info.value.code == "model_call_failed"
+    assert "sensitive provider failure" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is model_error
+
+
+def test_agent_stops_before_executing_tool_from_fifth_model_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_arguments = [{"order_id": f"order-{index:03d}"} for index in range(1, 6)]
+    executed_arguments: list[object] = []
+
+    def record_get_order(arguments: object) -> object:
+        executed_arguments.append(arguments)
+        return {"status": "recorded"}
+
+    monkeypatch.setattr(agent_module, "get_order", record_get_order)
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        id=f"call-{index}",
+                        name="get_order",
+                        arguments=arguments,
+                    ),
+                )
+            )
+            for index, arguments in enumerate(tool_arguments, start=1)
+        ]
+    )
+
+    with pytest.raises(AgentRunError) as exc_info:
+        Agent(model).run("Check several orders.")
+
+    assert exc_info.value.code == "model_call_limit_exceeded"
+    assert len(model.requests) == 5
+    assert executed_arguments == tool_arguments[:4]
+
+
+def test_agent_accepts_final_text_from_fifth_model_call() -> None:
+    tool_responses = [
+        ModelResponse(
+            tool_calls=(
+                ToolCall(
+                    id=f"call-{index}",
+                    name="get_order",
+                    arguments={"order_id": "order-001"},
+                ),
+            )
+        )
+        for index in range(1, 5)
+    ]
+    model = ScriptedModel(
+        [
+            *tool_responses,
+            ModelResponse(content="The order is still processing."),
+        ]
+    )
+
+    result = Agent(model).run("Keep checking the order.")
+
+    assert result == "The order is still processing."
+    assert len(model.requests) == 5
