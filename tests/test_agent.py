@@ -214,18 +214,30 @@ def test_agent_preserves_order_of_multiple_tool_calls_in_one_response() -> None:
 
 
 def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
+    tool_call_response = ModelResponse(
+        content="Let me check that order.",
+        tool_calls=(
+            ToolCall(
+                id="call-1",
+                name="get_order",
+                arguments={"order_id": "order-002"},
+            ),
+        ),
+    )
+    tool_result_request = ModelRequest(
+        parts=(
+            ToolResultPart(
+                tool_call_id="call-1",
+                result={
+                    "order_id": "order-002",
+                    "status": "shipped",
+                },
+            ),
+        )
+    )
     model = TestModel(
         [
-            ModelResponse(
-                content="Let me check that order.",
-                tool_calls=(
-                    ToolCall(
-                        id="call-1",
-                        name="get_order",
-                        arguments={"order_id": "order-002"},
-                    ),
-                ),
-            ),
+            tool_call_response,
             ModelResponse(content="Your order has shipped."),
         ]
     )
@@ -233,6 +245,10 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
     result = Agent(model).run("Where is order-002?")
 
     assert result == "Your order has shipped."
+    assert model.requests[1][-2:] == (
+        tool_call_response,
+        tool_result_request,
+    )
 
 
 @pytest.mark.parametrize(
