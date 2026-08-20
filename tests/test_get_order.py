@@ -85,3 +85,15 @@ def test_get_order_arguments_schema_describes_input_contract() -> None:
     assert order_id_schema["type"] == "string"
     assert order_id_schema["minLength"] == 1
     assert order_id_schema["pattern"] == r"^\S(?:[\s\S]*\S)?$"
+
+
+def test_get_order_definition_describes_tool_contract() -> None:
+    definition = get_order_module.GET_ORDER_TOOL_DEFINITION
+
+    assert definition.name == "get_order"
+    assert definition.description == (
+        "Retrieve the current status of an order by its order_id."
+    )
+    assert (
+        definition.parameters == get_order_module.GetOrderArguments.model_json_schema()
+    )
