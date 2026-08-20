@@ -8,7 +8,10 @@ from customer_support_agent.messages import (
 )
 from customer_support_agent.models import ChatModel
 from customer_support_agent.tool_errors import create_tool_error
-from customer_support_agent.tools.get_order import get_order
+from customer_support_agent.tools.get_order import (
+    GET_ORDER_TOOL_DEFINITION,
+    get_order,
+)
 
 _MAX_MODEL_CALLS = 5
 
@@ -46,7 +49,10 @@ class Agent:
             model_call_count += 1
 
             try:
-                response = self._model.generate(messages)
+                response = self._model.generate(
+                    messages,
+                    (GET_ORDER_TOOL_DEFINITION,),
+                )
             except Exception as error:
                 raise AgentRunError("model_call_failed") from error
 

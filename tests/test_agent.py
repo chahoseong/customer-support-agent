@@ -13,15 +13,23 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models import ChatModel
+from customer_support_agent.tools.definitions import ToolDefinition
+from customer_support_agent.tools.get_order import GET_ORDER_TOOL_DEFINITION
 
 
 class ScriptedModel(ChatModel):
     def __init__(self, responses: list[ModelResponse]) -> None:
         self._responses = iter(responses)
         self.requests: list[tuple[ModelMessage, ...]] = []
+        self.received_tools: list[tuple[ToolDefinition, ...]] = []
 
-    def generate(self, messages: Sequence[ModelMessage]) -> ModelResponse:
+    def generate(
+        self,
+        messages: Sequence[ModelMessage],
+        tools: Sequence[ToolDefinition],
+    ) -> ModelResponse:
         self.requests.append(tuple(messages))
+        self.received_tools.append(tuple(tools))
         return next(self._responses)
 
 
@@ -352,6 +360,7 @@ def test_agent_wraps_model_failure_without_exposing_details() -> None:
         def generate(
             self,
             _messages: Sequence[ModelMessage],
+            _tools: Sequence[ToolDefinition],
         ) -> ModelResponse:
             raise model_error
 
@@ -422,3 +431,27 @@ def test_agent_accepts_final_text_from_fifth_model_call() -> None:
 
     assert result == "The order is still processing."
     assert len(model.requests) == 5
+
+
+def test_agent_provides_get_order_definition_on_every_model_call() -> None:
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="call-1",
+                        name="get_order",
+                        arguments={"order_id": "order-001"},
+                    ),
+                )
+            ),
+            ModelResponse(content="The order is processing."),
+        ]
+    )
+
+    Agent(model).run("Where is order-001?")
+
+    assert model.received_tools == [
+        (GET_ORDER_TOOL_DEFINITION,),
+        (GET_ORDER_TOOL_DEFINITION,),
+    ]
