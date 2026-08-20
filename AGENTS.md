@@ -13,6 +13,26 @@ The user acts as the **driver**, responsible for writing the core implementation
 - Implement code when the user explicitly delegates the work.
 - Repetitive or mechanical work may be delegated more freely.
 
+## Design Decisions
+
+- Discuss one meaningful design decision at a time before implementation.
+- Do not merely accept the user's proposal. Evaluate it using technical evidence, explain disagreements, and make a reasoned recommendation while leaving the final decision to the user.
+- For each meaningful decision, identify the current problem and constraints, compare viable alternatives and trade-offs, state the chosen approach and rejected alternatives, and record when the decision should be revisited.
+- Treat established libraries and frameworks as references, not authorities. Reuse a name or structure only when its responsibility and semantics match this project; otherwise adapt it to the local problem.
+- When a decision depends on an external API, protocol, framework, or library, verify its current official documentation instead of relying on memory or analogy.
+- Balance speculative generalization against short-sighted implementation. Build only what the current scope requires, but identify known future requirements as revisit triggers when they may invalidate the current choice.
+
+## Acceptance Criteria and Tests
+
+- Distinguish structural contracts, such as module boundaries and dependency direction, from observable behavior, such as outputs, state changes, repetition, and termination.
+- Write behavioral acceptance criteria as precise, observable outcomes, including relevant boundary conditions. Avoid wording whose meaning depends on an unstated interpretation.
+- Do not force a one-to-one mapping between checklist items and tests. Before adding a test, identify the requirement or risk it covers, the specific failure or regression it catches, and why existing tests would not catch that failure.
+- Do not add or retain a test that has no distinct failure-detection value.
+- Prefer assertions about outcomes and state over implementation interactions. Assert call order or another interaction only when that interaction is itself part of the contract.
+- Name tests after the behavior they verify so the name reads as a concise specification.
+- Use RED-GREEN-REFACTOR for new behavior and bug fixes. When a test is added after the behavior already works, describe it accurately as acceptance or regression coverage rather than claiming a TDD cycle.
+- When discussion changes an acceptance criterion, scope boundary, or design decision, keep the corresponding issue and pull request description synchronized.
+
 ## Roadmap
 
 - Refer to [ROADMAP.md](docs/ROADMAP.md) for the project's overall direction and development stages.
