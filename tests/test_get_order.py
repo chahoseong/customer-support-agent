@@ -1,6 +1,6 @@
 import pytest
 
-import customer_support_agent.get_order as get_order_module
+import customer_support_agent.tools.get_order as get_order_module
 
 
 @pytest.mark.parametrize(

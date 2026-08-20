@@ -1,6 +1,5 @@
 from typing import Literal
 
-from customer_support_agent.get_order import get_order
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
@@ -9,6 +8,7 @@ from customer_support_agent.messages import (
 )
 from customer_support_agent.models import ChatModel
 from customer_support_agent.tool_errors import create_tool_error
+from customer_support_agent.tools.get_order import get_order
 
 _MAX_MODEL_CALLS = 5
 
