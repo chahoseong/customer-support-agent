@@ -42,7 +42,7 @@ def test_get_order_returns_not_found_error(
     assert result == {
         "error": {
             "code": "order_not_found",
-            "message": "Order not found.",
+            "message": "No order matched the provided order_id.",
         }
     }
 
@@ -70,7 +70,7 @@ def test_get_order_returns_invalid_arguments_error(
     assert result == {
         "error": {
             "code": "invalid_arguments",
-            "message": "Invalid arguments for get_order.",
+            "message": "Arguments do not match the tool's input schema.",
         }
     }
 

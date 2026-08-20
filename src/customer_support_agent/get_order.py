@@ -7,16 +7,16 @@ from pydantic import (
     ValidationError,
 )
 
+from customer_support_agent.tool_errors import (
+    ToolError,
+    create_tool_error,
+)
+
 type OrderStatus = Literal[
     "processing",
     "shipped",
     "delivered",
     "cancelled",
-]
-
-type GetOrderErrorCode = Literal[
-    "invalid_arguments",
-    "order_not_found",
 ]
 
 
@@ -25,16 +25,7 @@ class GetOrderSuccess(TypedDict):
     status: OrderStatus
 
 
-class GetOrderErrorDetails(TypedDict):
-    code: GetOrderErrorCode
-    message: str
-
-
-class GetOrderError(TypedDict):
-    error: GetOrderErrorDetails
-
-
-type GetOrderResult = GetOrderSuccess | GetOrderError
+type GetOrderResult = GetOrderSuccess | ToolError
 
 _ORDERS: dict[str, OrderStatus] = {
     "order-001": "processing",
@@ -61,22 +52,12 @@ def get_order(arguments: object) -> GetOrderResult:
     try:
         parsed_arguments = GetOrderArguments.model_validate(arguments)
     except ValidationError:
-        return {
-            "error": {
-                "code": "invalid_arguments",
-                "message": "Invalid arguments for get_order.",
-            }
-        }
+        return create_tool_error("invalid_arguments")
 
     status = _ORDERS.get(parsed_arguments.order_id)
 
     if status is None:
-        return {
-            "error": {
-                "code": "order_not_found",
-                "message": "Order not found.",
-            }
-        }
+        return create_tool_error("order_not_found")
 
     return {
         "order_id": parsed_arguments.order_id,
