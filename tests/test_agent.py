@@ -1,5 +1,7 @@
 from collections.abc import Sequence
 
+import pytest
+
 from customer_support_agent.agent import Agent
 from customer_support_agent.messages import (
     ModelMessage,
@@ -231,3 +233,24 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
     result = Agent(model).run("Where is order-002?")
 
     assert result == "Your order has shipped."
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "",
+        " \n\t ",
+    ],
+)
+def test_agent_rejects_final_response_without_displayable_content(
+    content: str | None,
+) -> None:
+    model = TestModel(
+        [
+            ModelResponse(content=content),
+        ]
+    )
+
+    with pytest.raises(ValueError):
+        Agent(model).run("Where is my order?")

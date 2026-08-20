@@ -43,7 +43,7 @@ class Agent:
                 )
                 continue
 
-            if response.content is None:
+            if response.content is None or not response.content.strip():
                 raise ValueError("Model response has no content.")
 
             return response.content
