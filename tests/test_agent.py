@@ -209,3 +209,25 @@ def test_agent_preserves_order_of_multiple_tool_calls_in_one_response() -> None:
             ),
         )
     )
+
+
+def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
+    model = TestModel(
+        [
+            ModelResponse(
+                content="Let me check that order.",
+                tool_calls=(
+                    ToolCall(
+                        id="call-1",
+                        name="get_order",
+                        arguments={"order_id": "order-002"},
+                    ),
+                ),
+            ),
+            ModelResponse(content="Your order has shipped."),
+        ]
+    )
+
+    result = Agent(model).run("Where is order-002?")
+
+    assert result == "Your order has shipped."
