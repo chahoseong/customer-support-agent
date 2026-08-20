@@ -11,6 +11,7 @@ from customer_support_agent.tool_errors import (
     ToolError,
     create_tool_error,
 )
+from customer_support_agent.tools.definitions import ToolDefinition
 
 type OrderStatus = Literal[
     "processing",
@@ -46,6 +47,13 @@ class GetOrderArguments(BaseModel):
             description="Opaque order identifier to look up.",
         ),
     ]
+
+
+GET_ORDER_TOOL_DEFINITION = ToolDefinition(
+    name="get_order",
+    description="Retrieve the current status of an order by its order_id.",
+    parameters=GetOrderArguments.model_json_schema(),
+)
 
 
 def get_order(arguments: object) -> GetOrderResult:
