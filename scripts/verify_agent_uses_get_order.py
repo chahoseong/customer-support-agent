@@ -1,3 +1,5 @@
+"""Run a manual E2E smoke test of the Agent -> get_order workflow."""
+
 import os
 from collections.abc import Sequence
 
