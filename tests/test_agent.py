@@ -81,3 +81,83 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
             tool_result_request,
         ),
     ]
+
+
+def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
+    user_request = ModelRequest(
+        parts=(
+            UserPromptPart(
+                content="Compare order-001 and order-002.",
+            ),
+        )
+    )
+    first_tool_call_response = ModelResponse(
+        tool_calls=(
+            ToolCall(
+                id="call-1",
+                name="get_order",
+                arguments={"order_id": "order-001"},
+            ),
+        )
+    )
+    first_tool_result_request = ModelRequest(
+        parts=(
+            ToolResultPart(
+                tool_call_id="call-1",
+                result={
+                    "order_id": "order-001",
+                    "status": "processing",
+                },
+            ),
+        )
+    )
+    second_tool_call_response = ModelResponse(
+        tool_calls=(
+            ToolCall(
+                id="call-2",
+                name="get_order",
+                arguments={"order_id": "order-002"},
+            ),
+        )
+    )
+    second_tool_result_request = ModelRequest(
+        parts=(
+            ToolResultPart(
+                tool_call_id="call-2",
+                result={
+                    "order_id": "order-002",
+                    "status": "shipped",
+                },
+            ),
+        )
+    )
+    final_response = ModelResponse(
+        content="Order-001 is processing and order-002 has shipped."
+    )
+
+    model = TestModel(
+        [
+            first_tool_call_response,
+            second_tool_call_response,
+            final_response,
+        ]
+    )
+
+    result = Agent(model).run("Compare order-001 and order-002.")
+
+    assert result == "Order-001 is processing and order-002 has shipped."
+    assert model.requests == [
+        (user_request,),
+        (
+            user_request,
+            first_tool_call_response,
+            first_tool_result_request,
+        ),
+        (
+            user_request,
+            first_tool_call_response,
+            first_tool_result_request,
+            second_tool_call_response,
+            second_tool_result_request,
+        ),
+    ]
