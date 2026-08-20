@@ -1,21 +1,10 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from collections.abc import Sequence
 
-
-@dataclass
-class ToolCall:
-    id: str
-    name: str
-    arguments: object
-
-
-@dataclass
-class ModelResponse:
-    content: str | None = None
-    tool_calls: tuple[ToolCall, ...] = ()
+from customer_support_agent.messages import ModelMessage, ModelResponse
 
 
 class ChatModel(ABC):
     @abstractmethod
-    def generate(self, messages: object) -> ModelResponse:
+    def generate(self, messages: Sequence[ModelMessage]) -> ModelResponse:
         raise NotImplementedError
