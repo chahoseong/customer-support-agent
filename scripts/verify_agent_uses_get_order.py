@@ -18,6 +18,9 @@ EXPECTED_STATUS = "shipped"
 
 
 class RecordingChatModel(ChatModel):
+    """에이전트가 get_order를 사용했는지 검증할 수 있도록 모델 요청 이력을 기록한다.
+    """
+
     def __init__(self, model: ChatModel) -> None:
         self._model = model
         self.requests: list[tuple[ModelMessage, ...]] = []
@@ -41,9 +44,8 @@ def get_required_env(name: str) -> str:
     return value.strip()
 
 
-def verify_run(
+def require_expected_get_order_result(
     model: RecordingChatModel,
-    answer: str,
 ) -> None:
     expected_tool_result = {
         "order_id": ORDER_ID,
@@ -62,6 +64,8 @@ def verify_run(
             f"Expected tool result {expected_tool_result!r}, got {tool_results!r}"
         )
 
+
+def require_expected_final_answer(answer: str) -> None:
     expected_answer = f"RESULT: {ORDER_ID} | {EXPECTED_STATUS}"
 
     if answer.strip().casefold() != expected_answer.casefold():
@@ -91,7 +95,8 @@ def main() -> int:
         "the tool result."
     )
 
-    verify_run(model, answer)
+    require_expected_get_order_result(model)
+    require_expected_final_answer(answer)
 
     print(f"PASS: order_id={ORDER_ID!r}, status={EXPECTED_STATUS!r}, answer={answer!r}")
 
