@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Literal, TypedDict
 
 from pydantic import (
@@ -12,6 +13,8 @@ from customer_support_agent.tool_errors import (
     create_tool_error,
 )
 from customer_support_agent.tools.definitions import ToolDefinition
+
+logger = logging.getLogger(__name__)
 
 type OrderStatus = Literal[
     "processing",
@@ -60,7 +63,14 @@ def get_order(arguments: object) -> GetOrderResult:
     try:
         parsed_arguments = GetOrderArguments.model_validate(arguments)
     except ValidationError:
+        logger.warning(
+            "The tool arguments are invalid.",
+        )
         return create_tool_error("invalid_arguments")
+
+    logger.info(
+        "The tool arguments are valid.",
+    )
 
     status = _ORDERS.get(parsed_arguments.order_id)
 
