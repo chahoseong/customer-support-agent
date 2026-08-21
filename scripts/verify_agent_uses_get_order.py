@@ -1,9 +1,11 @@
 """Run a manual E2E smoke test of the Agent -> get_order workflow."""
 
+import logging
 import os
+import sys
 from collections.abc import Sequence
 
-from customer_support_agent.agent import Agent
+from customer_support_agent.agent import Agent, AgentRunError
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
@@ -18,8 +20,7 @@ EXPECTED_STATUS = "shipped"
 
 
 class RecordingChatModel(ChatModel):
-    """에이전트가 get_order를 사용했는지 검증할 수 있도록 모델 요청 이력을 기록한다.
-    """
+    """에이전트가 get_order를 사용했는지 검증할 수 있도록 모델 요청 이력을 기록한다."""
 
     def __init__(self, model: ChatModel) -> None:
         self._model = model
@@ -73,6 +74,12 @@ def require_expected_final_answer(answer: str) -> None:
 
 
 def main() -> int:
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(levelname)-8s %(module)-10s %(message)s",
+    )
+    logging.getLogger("customer_support_agent").setLevel(logging.INFO)
+
     base_url = get_required_env("LLM_BASE_URL")
     model_name = get_required_env("LLM_MODEL_NAME")
     api_key = os.getenv("LLM_API_KEY", "").strip() or "no-api-key"
@@ -86,14 +93,18 @@ def main() -> int:
     )
     agent = Agent(model)
 
-    answer = agent.run(
-        f"Use the get_order tool to look up {ORDER_ID}. "
-        "After the tool returns, respond with exactly one line "
-        "in this format without backticks: "
-        "RESULT: <order_id> | <status>. "
-        "Replace the placeholders with the exact values from "
-        "the tool result."
-    )
+    try:
+        answer = agent.run(
+            f"Use the get_order tool to look up {ORDER_ID}. "
+            "After the tool returns, respond with exactly one line "
+            "in this format without backticks: "
+            "RESULT: <order_id> | <status>. "
+            "Replace the placeholders with the exact values from "
+            "the tool result."
+        )
+    except AgentRunError as error:
+        print(f"FAIL: {error.code}", file=sys.stderr)
+        return 1
 
     require_expected_get_order_result(model)
     require_expected_final_answer(answer)
