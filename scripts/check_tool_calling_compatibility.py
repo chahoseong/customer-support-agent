@@ -29,7 +29,7 @@ def main() -> int:
 
     client = OpenAI(base_url=base_url, api_key=api_key)
 
-    # Define the deterministic tool contract and prompt used by the probe.
+    # Define the deterministic tool contract and prompt used by the compatibility check.
     tools: list[ChatCompletionFunctionToolParam] = [
         {
             "type": "function",

@@ -1,4 +1,4 @@
-"""Run a manual E2E smoke test of the Agent -> get_order workflow."""
+"""Check whether the Agent uses the get_order tool and returns its result."""
 
 import logging
 import os
