@@ -1,8 +1,10 @@
 from typing import TypedDict
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import Order, OrderStatus
-from customer_support_agent.tool_errors import ToolError
+from customer_support_agent.tool_errors import ToolError, create_tool_error
 
 
 class CustomerOrderSummary(TypedDict):
@@ -17,10 +19,19 @@ class GetCustomerOrdersSuccess(TypedDict):
 type GetCustomerOrdersResult = GetCustomerOrdersSuccess | ToolError
 
 
+class GetCustomerOrdersArguments(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+
 def get_customer_orders(
     customer_id: str,
     arguments: object,
 ) -> GetCustomerOrdersResult:
+    try:
+        GetCustomerOrdersArguments.model_validate(arguments)
+    except ValidationError:
+        return create_tool_error("invalid_arguments")
+
     orders: list[Order] = []
 
     for order in ORDERS.values():

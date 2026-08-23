@@ -26,3 +26,22 @@ def test_get_customer_orders_returns_customer_orders_sorted_by_order_id(
     ]
 
     assert actual_result == {"orders": expected_orders}
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param({"unexpected": "value"}, id="unexpected-field"),
+        pytest.param([], id="non-object"),
+    ],
+)
+def test_get_customer_orders_returns_invalid_arguments_error(arguments: object) -> None:
+
+    result = get_customer_orders("customer-001", arguments)
+
+    assert result == {
+        "error": {
+            "code": "invalid_arguments",
+            "message": "Arguments do not match the tool's input schema.",
+        }
+    }
