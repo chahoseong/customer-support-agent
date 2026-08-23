@@ -1,7 +1,10 @@
 import pytest
 
 from customer_support_agent.domain.fixtures import ORDERS
-from customer_support_agent.tools.order import get_customer_orders
+from customer_support_agent.tools.order import (
+    GetCustomerOrdersArguments,
+    get_customer_orders,
+)
 
 
 @pytest.mark.parametrize(
@@ -45,3 +48,11 @@ def test_get_customer_orders_returns_invalid_arguments_error(arguments: object) 
             "message": "Arguments do not match the tool's input schema.",
         }
     }
+
+
+def test_get_customer_orders_arguments_schema_describes_empty_object_contract() -> None:
+    schema = GetCustomerOrdersArguments.model_json_schema()
+
+    assert schema["type"] == "object"
+    assert schema["properties"] == {}
+    assert schema["additionalProperties"] is False
