@@ -6,6 +6,8 @@ from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import Order, OrderStatus
 from customer_support_agent.tool_errors import ToolError, create_tool_error
 
+from .definitions import ToolDefinition
+
 
 class CustomerOrderSummary(TypedDict):
     order_id: str
@@ -21,6 +23,16 @@ type GetCustomerOrdersResult = GetCustomerOrdersSuccess | ToolError
 
 class GetCustomerOrdersArguments(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
+
+
+GET_CUSTOMER_ORDERS_TOOL_DEFINITION = ToolDefinition(
+    name="get_customer_orders",
+    description=(
+        "Retrieve the current customer's orders, including each order's "
+        "order_id and current status."
+    ),
+    parameters=GetCustomerOrdersArguments.model_json_schema(),
+)
 
 
 def get_customer_orders(
