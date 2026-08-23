@@ -80,7 +80,11 @@ class FindOrderArguments(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
     order_id: Annotated[
         str,
-        Field(min_length=1, pattern=r"^\S(?:[\s\S]*\S)?$", description="Opaque order identifier to look up.",),
+        Field(
+            min_length=1,
+            pattern=r"^\S(?:[\s\S]*\S)?$",
+            description="Opaque order identifier to look up.",
+        ),
     ]
 
 
@@ -89,7 +93,7 @@ def find_order(customer_id: str, arguments: object) -> FindOrderResult:
         parsed_args = FindOrderArguments.model_validate(arguments)
     except ValidationError:
         return create_tool_error("invalid_arguments")
-    
+
     order = ORDERS.get(parsed_args.order_id)
 
     if order is None or order.customer_id != customer_id:
