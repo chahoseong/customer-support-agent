@@ -109,3 +109,30 @@ def test_find_order_returns_not_found_when_order_is_not_in_customer_scope(
             "message": "No order matched the provided order_id.",
         }
     }
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        pytest.param({}, id="missing"),
+        pytest.param({"order_id": 123}, id="wrong-type"),
+        pytest.param({"order_id": ""}, id="empty"),
+        pytest.param({"order_id": "   "}, id="whitespace-only"),
+        pytest.param({"order_id": "order-001", "unexpected": "value"}, id="extra-field"),
+        pytest.param({"order_id": " order-001"}, id="leading-whitespace"),
+        pytest.param({"order_id": "order-001 "}, id="trailing-whitespace"),
+        pytest.param([], id="non-object"),
+    ]
+)
+def test_find_order_returns_invalid_arguments_error(
+    order: object
+) -> None:
+    result = find_order("customer-001", order)
+
+    assert result == {
+        "error": {
+            "code": "invalid_arguments",
+            "message": "Arguments do not match the tool's input schema.",
+        }
+    }
+

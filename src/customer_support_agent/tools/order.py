@@ -1,6 +1,11 @@
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+)
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import Order, OrderStatus
@@ -73,12 +78,18 @@ type FindOrderResult = FindOrderSuccess | ToolError
 
 class FindOrderArguments(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
-    order_id: str
+    order_id: Annotated[
+        str,
+        Field(min_length=1, pattern=r"^\S(?:[\s\S]*\S)?$", description="Opaque order identifier to look up.",),
+    ]
 
 
 def find_order(customer_id: str, arguments: object) -> FindOrderResult:
-    parsed_args = FindOrderArguments.model_validate(arguments)
-
+    try:
+        parsed_args = FindOrderArguments.model_validate(arguments)
+    except ValidationError:
+        return create_tool_error("invalid_arguments")
+    
     order = ORDERS.get(parsed_args.order_id)
 
     if order is None or order.customer_id != customer_id:
