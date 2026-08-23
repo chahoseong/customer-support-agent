@@ -3,6 +3,7 @@ import pytest
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
     GET_CUSTOMER_ORDERS_TOOL_DEFINITION,
+    FindOrderArguments,
     GetCustomerOrdersArguments,
     find_order,
     get_customer_orders,
@@ -94,8 +95,8 @@ def test_find_order_returns_order_in_customer_scope(
     ("customer_id", "order_id"),
     [
         pytest.param("customer-001", "order-999", id="unknown-order"),
-        pytest.param("customer-001", "order-004", id="other-customer-order")
-    ]
+        pytest.param("customer-001", "order-004", id="other-customer-order"),
+    ],
 )
 def test_find_order_returns_not_found_when_order_is_not_in_customer_scope(
     customer_id: str,
@@ -112,22 +113,22 @@ def test_find_order_returns_not_found_when_order_is_not_in_customer_scope(
 
 
 @pytest.mark.parametrize(
-    "order",
+    "arguments",
     [
         pytest.param({}, id="missing"),
         pytest.param({"order_id": 123}, id="wrong-type"),
         pytest.param({"order_id": ""}, id="empty"),
         pytest.param({"order_id": "   "}, id="whitespace-only"),
-        pytest.param({"order_id": "order-001", "unexpected": "value"}, id="extra-field"),
+        pytest.param(
+            {"order_id": "order-001", "unexpected": "value"}, id="extra-field"
+        ),
         pytest.param({"order_id": " order-001"}, id="leading-whitespace"),
         pytest.param({"order_id": "order-001 "}, id="trailing-whitespace"),
         pytest.param([], id="non-object"),
-    ]
+    ],
 )
-def test_find_order_returns_invalid_arguments_error(
-    order: object
-) -> None:
-    result = find_order("customer-001", order)
+def test_find_order_returns_invalid_arguments_error(arguments: object) -> None:
+    result = find_order("customer-001", arguments)
 
     assert result == {
         "error": {
@@ -136,3 +137,14 @@ def test_find_order_returns_invalid_arguments_error(
         }
     }
 
+
+def test_find_order_arguments_schema_describes_input_contract() -> None:
+    schema = FindOrderArguments.model_json_schema()
+    order_id_schema = schema["properties"]["order_id"]
+
+    assert schema["type"] == "object"
+    assert schema["additionalProperties"] is False
+    assert schema["required"] == ["order_id"]
+    assert order_id_schema["type"] == "string"
+    assert order_id_schema["minLength"] == 1
+    assert order_id_schema["pattern"] == r"^\S(?:[\s\S]*\S)?$"
