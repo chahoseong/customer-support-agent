@@ -2,6 +2,7 @@ import pytest
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
+    GET_CUSTOMER_ORDERS_TOOL_DEFINITION,
     GetCustomerOrdersArguments,
     get_customer_orders,
 )
@@ -56,3 +57,14 @@ def test_get_customer_orders_arguments_schema_describes_empty_object_contract() 
     assert schema["type"] == "object"
     assert schema["properties"] == {}
     assert schema["additionalProperties"] is False
+
+
+def test_get_customer_orders_definition_describes_customer_scoped_lookup() -> None:
+    definition = GET_CUSTOMER_ORDERS_TOOL_DEFINITION
+
+    assert definition.name == "get_customer_orders"
+    assert definition.description == (
+        "Retrieve the current customer's orders, including each order's "
+        "order_id and current status."
+    )
+    assert definition.parameters == GetCustomerOrdersArguments.model_json_schema()
