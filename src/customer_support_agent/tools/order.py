@@ -78,5 +78,10 @@ class FindOrderArguments(BaseModel):
 
 def find_order(customer_id: str, arguments: object) -> FindOrderResult:
     parsed_args = FindOrderArguments.model_validate(arguments)
-    order = ORDERS[parsed_args.order_id]
+
+    order = ORDERS.get(parsed_args.order_id)
+
+    if order is None or order.customer_id != customer_id:
+        return create_tool_error("order_not_found")
+
     return {"order_id": order.order_id, "status": order.status}
