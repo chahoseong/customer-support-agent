@@ -88,3 +88,24 @@ def test_find_order_returns_order_in_customer_scope(
         "order_id": order_id,
         "status": ORDERS[order_id].status,
     }
+
+
+@pytest.mark.parametrize(
+    ("customer_id", "order_id"),
+    [
+        pytest.param("customer-001", "order-999", id="unknown-order"),
+        pytest.param("customer-001", "order-004", id="other-customer-order")
+    ]
+)
+def test_find_order_returns_not_found_when_order_is_not_in_customer_scope(
+    customer_id: str,
+    order_id: str,
+) -> None:
+    result = find_order(customer_id, {"order_id": order_id})
+
+    assert result == {
+        "error": {
+            "code": "order_not_found",
+            "message": "No order matched the provided order_id.",
+        }
+    }
