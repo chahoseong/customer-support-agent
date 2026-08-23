@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, TypedDict
 
 from pydantic import (
     BaseModel,
@@ -8,6 +8,8 @@ from pydantic import (
     ValidationError,
 )
 
+from customer_support_agent.domain.fixtures import ORDERS
+from customer_support_agent.domain.models import OrderStatus
 from customer_support_agent.tool_errors import (
     ToolError,
     create_tool_error,
@@ -16,13 +18,6 @@ from customer_support_agent.tools.definitions import ToolDefinition
 
 logger = logging.getLogger(__name__)
 
-type OrderStatus = Literal[
-    "processing",
-    "shipped",
-    "delivered",
-    "cancelled",
-]
-
 
 class GetOrderSuccess(TypedDict):
     order_id: str
@@ -30,13 +25,6 @@ class GetOrderSuccess(TypedDict):
 
 
 type GetOrderResult = GetOrderSuccess | ToolError
-
-_ORDERS: dict[str, OrderStatus] = {
-    "order-001": "processing",
-    "order-002": "shipped",
-    "order-003": "delivered",
-    "order-004": "cancelled",
-}
 
 
 class GetOrderArguments(BaseModel):
@@ -72,12 +60,12 @@ def get_order(arguments: object) -> GetOrderResult:
         "The tool arguments are valid.",
     )
 
-    status = _ORDERS.get(parsed_arguments.order_id)
+    order = ORDERS.get(parsed_arguments.order_id)
 
-    if status is None:
+    if order is None:
         return create_tool_error("order_not_found")
 
     return {
-        "order_id": parsed_arguments.order_id,
-        "status": status,
+        "order_id": order.order_id,
+        "status": order.status,
     }
