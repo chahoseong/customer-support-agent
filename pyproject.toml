@@ -36,6 +36,7 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.12"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 files = ["src", "tests", "scripts"]
 strict = true
 warn_unreachable = true
