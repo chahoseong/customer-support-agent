@@ -4,6 +4,7 @@ from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
     GET_CUSTOMER_ORDERS_TOOL_DEFINITION,
     GetCustomerOrdersArguments,
+    find_order,
     get_customer_orders,
 )
 
@@ -68,3 +69,22 @@ def test_get_customer_orders_definition_describes_customer_scoped_lookup() -> No
         "order_id and current status."
     )
     assert definition.parameters == GetCustomerOrdersArguments.model_json_schema()
+
+
+@pytest.mark.parametrize(
+    ("customer_id", "order_id"),
+    [
+        ("customer-001", "order-001"),
+        ("customer-002", "order-004"),
+    ],
+)
+def test_find_order_returns_order_in_customer_scope(
+    customer_id: str,
+    order_id: str,
+) -> None:
+    result = find_order(customer_id, {"order_id": order_id})
+
+    assert result == {
+        "order_id": order_id,
+        "status": ORDERS[order_id].status,
+    }

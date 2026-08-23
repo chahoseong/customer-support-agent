@@ -61,3 +61,22 @@ def get_customer_orders(
             for order in orders
         ]
     }
+
+
+class FindOrderSuccess(TypedDict):
+    order_id: str
+    status: OrderStatus
+
+
+type FindOrderResult = FindOrderSuccess | ToolError
+
+
+class FindOrderArguments(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    order_id: str
+
+
+def find_order(customer_id: str, arguments: object) -> FindOrderResult:
+    parsed_args = FindOrderArguments.model_validate(arguments)
+    order = ORDERS[parsed_args.order_id]
+    return {"order_id": order.order_id, "status": order.status}
