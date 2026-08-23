@@ -21,6 +21,13 @@ The user acts as the **driver**, responsible for writing the core implementation
 - If a proposed change conflicts with the roadmap, point out the conflict before proceeding.
 - If new information suggests the roadmap should change, discuss the change with the user rather than updating it implicitly.
 
+## Project Context
+
+- Refer to [CONTEXT.md](docs/CONTEXT.md) for the canonical meaning of project terminology.
+- Use defined terms consistently in discussions, documentation, issues, tests, and code.
+- Do not use expressions listed under `Avoid` as substitutes for the term being defined.
+- Discuss ambiguous or missing terminology with the user before adding or changing a definition.
+
 ## Design Decisions
 
 - Discuss one meaningful design decision at a time before implementation.
