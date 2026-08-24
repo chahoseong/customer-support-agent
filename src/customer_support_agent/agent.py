@@ -8,7 +8,7 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models import ChatModel
-from customer_support_agent.tool_errors import create_tool_error
+from customer_support_agent.tools.errors import create_tool_error
 from customer_support_agent.tools.get_order import (
     GET_ORDER_TOOL_DEFINITION,
     get_order,
