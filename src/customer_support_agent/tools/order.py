@@ -88,6 +88,16 @@ class FindOrderArguments(BaseModel):
     ]
 
 
+FIND_ORDER_TOOL_DEFINITION = ToolDefinition(
+    name="find_order",
+    description=(
+        "Retrieve the current status of an order belonging to the current "
+        "customer by its order_id."
+    ),
+    parameters=FindOrderArguments.model_json_schema(),
+)
+
+
 def find_order(customer_id: str, arguments: object) -> FindOrderResult:
     try:
         parsed_args = FindOrderArguments.model_validate(arguments)

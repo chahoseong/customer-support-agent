@@ -2,6 +2,7 @@ import pytest
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
+    FIND_ORDER_TOOL_DEFINITION,
     GET_CUSTOMER_ORDERS_TOOL_DEFINITION,
     FindOrderArguments,
     GetCustomerOrdersArguments,
@@ -148,3 +149,14 @@ def test_find_order_arguments_schema_describes_input_contract() -> None:
     assert order_id_schema["type"] == "string"
     assert order_id_schema["minLength"] == 1
     assert order_id_schema["pattern"] == r"^\S(?:[\s\S]*\S)?$"
+
+
+def test_find_order_definition_describes_customer_scoped_lookup() -> None:
+    definition = FIND_ORDER_TOOL_DEFINITION
+
+    assert definition.name == "find_order"
+    assert definition.description == (
+        "Retrieve the current status of an order belonging to the current "
+        "customer by its order_id."
+    )
+    assert definition.parameters == FindOrderArguments.model_json_schema()
