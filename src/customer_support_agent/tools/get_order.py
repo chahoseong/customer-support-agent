@@ -10,11 +10,11 @@ from pydantic import (
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import OrderStatus
-from customer_support_agent.tool_errors import (
+from customer_support_agent.tools.definitions import ToolDefinition
+from customer_support_agent.tools.errors import (
     ToolError,
     create_tool_error,
 )
-from customer_support_agent.tools.definitions import ToolDefinition
 
 logger = logging.getLogger(__name__)
 

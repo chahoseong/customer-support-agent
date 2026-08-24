@@ -9,7 +9,7 @@ from pydantic import (
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import Order, OrderStatus
-from customer_support_agent.tool_errors import ToolError, create_tool_error
+from customer_support_agent.tools.errors import ToolError, create_tool_error
 
 from .definitions import ToolDefinition
 
