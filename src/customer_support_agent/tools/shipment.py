@@ -4,7 +4,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError,
 )
 
 from customer_support_agent.domain.fixtures import (
@@ -15,11 +14,11 @@ from customer_support_agent.domain.models import (
     ShipmentStatus,
 )
 
-from .definitions import ToolDefinition
 from .errors import (
     ToolError,
     create_tool_error,
 )
+from .tool import ToolContext, tool
 
 
 class FindShipmentSuccess(TypedDict):
@@ -42,28 +41,16 @@ class FindShipmentArguments(BaseModel):
     ]
 
 
-FIND_SHIPMENT_TOOL_DEFINITION = ToolDefinition(
-    name="find_shipment",
-    description=(
-        "Retrieve detailed shipment information for an order belonging to "
-        "the current customer after an order lookup indicates it is needed. "
-        "Returns order_id and shipment_status, or shipment_not_found when no "
-        "shipment information is available."
-    ),
-    parameters=FindShipmentArguments.model_json_schema(),
-)
-
-
-def find_shipment(customer_id: str, arguments: object) -> FindShipmentResult:
-    try:
-        parsed_args = FindShipmentArguments.model_validate(arguments)
-    except ValidationError:
-        return create_tool_error("invalid_arguments")
-
-    order_id = parsed_args.order_id
+@tool
+def find_shipment(
+    context: ToolContext,
+    arguments: FindShipmentArguments,
+) -> FindShipmentResult:
+    """Retrieve detailed shipment information for an order belonging to the current customer after an order lookup indicates it is needed. Returns order_id and shipment_status, or shipment_not_found when no shipment information is available."""
+    order_id = arguments.order_id
 
     order = ORDERS.get(order_id)
-    if order is None or order.customer_id != customer_id:
+    if order is None or order.customer_id != context.customer_id:
         return create_tool_error("shipment_not_found")
 
     shipment = SHIPMENTS.get(order_id)
