@@ -1,5 +1,6 @@
 import pytest
 
+import customer_support_agent.tools.order as order_module
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
     FIND_ORDER_TOOL_DEFINITION,
@@ -21,7 +22,11 @@ from customer_support_agent.tools.order import (
 def test_get_customer_orders_returns_customer_orders_sorted_by_order_id(
     customer_id: str,
     expected_order_ids: list[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    reversed_orders = dict(reversed(tuple(ORDERS.items())))
+    monkeypatch.setattr(order_module, "ORDERS", reversed_orders)
+
     actual_result = get_customer_orders(customer_id, {})
 
     expected_orders = [
