@@ -1,14 +1,17 @@
 import pytest
 
 from customer_support_agent.tools.shipment import (
-    FIND_SHIPMENT_TOOL_DEFINITION,
     FindShipmentArguments,
     find_shipment,
 )
+from customer_support_agent.tools.tool import ToolContext
 
 
 def test_find_shipment_returns_shipment_in_customer_scope() -> None:
-    result = find_shipment("customer-001", {"order_id": "order-002"})
+    result = find_shipment(
+        {"order_id": "order-002"},
+        context=ToolContext(customer_id="customer-001"),
+    )
 
     assert result == {
         "order_id": "order-002",
@@ -29,7 +32,10 @@ def test_find_shipment_returns_not_found_when_shipment_is_unavailable_to_custome
     customer_id: str,
     order_id: str,
 ) -> None:
-    result = find_shipment(customer_id, {"order_id": order_id})
+    result = find_shipment(
+        {"order_id": order_id},
+        context=ToolContext(customer_id=customer_id),
+    )
 
     assert result == {
         "error": {
@@ -58,7 +64,10 @@ def test_find_shipment_returns_not_found_when_shipment_is_unavailable_to_custome
     ],
 )
 def test_find_shipment_returns_invalid_arguments_error(arguments: object) -> None:
-    result = find_shipment("customer-001", arguments)
+    result = find_shipment(
+        arguments,
+        context=ToolContext(customer_id="customer-001"),
+    )
 
     assert result == {
         "error": {
@@ -83,7 +92,7 @@ def test_find_shipment_arguments_schema_describes_input_contract() -> None:
 def test_find_shipment_definition_describes_conditional_customer_scoped_lookup() -> (
     None
 ):
-    definition = FIND_SHIPMENT_TOOL_DEFINITION
+    definition = find_shipment.definition
 
     assert definition.name == "find_shipment"
     assert definition.description == (

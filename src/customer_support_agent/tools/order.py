@@ -4,14 +4,13 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError,
 )
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import Order, OrderStatus
 from customer_support_agent.tools.errors import ToolError, create_tool_error
 
-from .definitions import ToolDefinition
+from .tool import ToolContext, tool
 
 
 class CustomerOrderSummary(TypedDict):
@@ -30,29 +29,17 @@ class GetCustomerOrdersArguments(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
 
-GET_CUSTOMER_ORDERS_TOOL_DEFINITION = ToolDefinition(
-    name="get_customer_orders",
-    description=(
-        "Retrieve the current customer's orders, including each order's "
-        "order_id and current status."
-    ),
-    parameters=GetCustomerOrdersArguments.model_json_schema(),
-)
-
-
+@tool
 def get_customer_orders(
-    customer_id: str,
-    arguments: object,
+    context: ToolContext,
+    arguments: GetCustomerOrdersArguments,
 ) -> GetCustomerOrdersResult:
-    try:
-        GetCustomerOrdersArguments.model_validate(arguments)
-    except ValidationError:
-        return create_tool_error("invalid_arguments")
+    """Retrieve the current customer's orders, including each order's order_id and current status."""
 
     orders: list[Order] = []
 
     for order in ORDERS.values():
-        if customer_id == order.customer_id:
+        if context.customer_id == order.customer_id:
             orders.append(order)
 
     orders.sort(key=lambda order: order.order_id)
@@ -88,25 +75,15 @@ class FindOrderArguments(BaseModel):
     ]
 
 
-FIND_ORDER_TOOL_DEFINITION = ToolDefinition(
-    name="find_order",
-    description=(
-        "Retrieve the current status of an order belonging to the current "
-        "customer by its order_id."
-    ),
-    parameters=FindOrderArguments.model_json_schema(),
-)
+@tool
+def find_order(
+    context: ToolContext,
+    arguments: FindOrderArguments,
+) -> FindOrderResult:
+    """Retrieve the current status of an order belonging to the current customer by its order_id."""
+    order = ORDERS.get(arguments.order_id)
 
-
-def find_order(customer_id: str, arguments: object) -> FindOrderResult:
-    try:
-        parsed_args = FindOrderArguments.model_validate(arguments)
-    except ValidationError:
-        return create_tool_error("invalid_arguments")
-
-    order = ORDERS.get(parsed_args.order_id)
-
-    if order is None or order.customer_id != customer_id:
+    if order is None or order.customer_id != context.customer_id:
         return create_tool_error("order_not_found")
 
     return {"order_id": order.order_id, "status": order.status}

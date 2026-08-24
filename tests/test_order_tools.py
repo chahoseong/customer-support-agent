@@ -3,13 +3,12 @@ import pytest
 import customer_support_agent.tools.order as order_module
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
-    FIND_ORDER_TOOL_DEFINITION,
-    GET_CUSTOMER_ORDERS_TOOL_DEFINITION,
     FindOrderArguments,
     GetCustomerOrdersArguments,
     find_order,
     get_customer_orders,
 )
+from customer_support_agent.tools.tool import ToolContext
 
 
 @pytest.mark.parametrize(
@@ -27,7 +26,10 @@ def test_get_customer_orders_returns_customer_orders_sorted_by_order_id(
     reversed_orders = dict(reversed(tuple(ORDERS.items())))
     monkeypatch.setattr(order_module, "ORDERS", reversed_orders)
 
-    actual_result = get_customer_orders(customer_id, {})
+    actual_result = get_customer_orders(
+        {},
+        context=ToolContext(customer_id=customer_id),
+    )
 
     expected_orders = [
         {
@@ -49,7 +51,10 @@ def test_get_customer_orders_returns_customer_orders_sorted_by_order_id(
 )
 def test_get_customer_orders_returns_invalid_arguments_error(arguments: object) -> None:
 
-    result = get_customer_orders("customer-001", arguments)
+    result = get_customer_orders(
+        arguments,
+        context=ToolContext(customer_id="customer-001"),
+    )
 
     assert result == {
         "error": {
@@ -68,7 +73,7 @@ def test_get_customer_orders_arguments_schema_describes_empty_object_contract() 
 
 
 def test_get_customer_orders_definition_describes_customer_scoped_lookup() -> None:
-    definition = GET_CUSTOMER_ORDERS_TOOL_DEFINITION
+    definition = get_customer_orders.definition
 
     assert definition.name == "get_customer_orders"
     assert definition.description == (
@@ -89,7 +94,10 @@ def test_find_order_returns_order_in_customer_scope(
     customer_id: str,
     order_id: str,
 ) -> None:
-    result = find_order(customer_id, {"order_id": order_id})
+    result = find_order(
+        {"order_id": order_id},
+        context=ToolContext(customer_id=customer_id),
+    )
 
     assert result == {
         "order_id": order_id,
@@ -108,7 +116,10 @@ def test_find_order_returns_not_found_when_order_is_not_in_customer_scope(
     customer_id: str,
     order_id: str,
 ) -> None:
-    result = find_order(customer_id, {"order_id": order_id})
+    result = find_order(
+        {"order_id": order_id},
+        context=ToolContext(customer_id=customer_id),
+    )
 
     assert result == {
         "error": {
@@ -134,7 +145,10 @@ def test_find_order_returns_not_found_when_order_is_not_in_customer_scope(
     ],
 )
 def test_find_order_returns_invalid_arguments_error(arguments: object) -> None:
-    result = find_order("customer-001", arguments)
+    result = find_order(
+        arguments,
+        context=ToolContext(customer_id="customer-001"),
+    )
 
     assert result == {
         "error": {
@@ -157,7 +171,7 @@ def test_find_order_arguments_schema_describes_input_contract() -> None:
 
 
 def test_find_order_definition_describes_customer_scoped_lookup() -> None:
-    definition = FIND_ORDER_TOOL_DEFINITION
+    definition = find_order.definition
 
     assert definition.name == "find_order"
     assert definition.description == (
