@@ -166,3 +166,118 @@ def test_toolset_returns_invalid_arguments_when_arguments_do_not_match_tool_sche
             "message": "Arguments do not match the tool's input schema.",
         }
     }
+
+
+def test_toolset_preserves_configured_name_when_returned_definition_name_changes() -> (
+    None
+):
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+
+    returned_definition = toolset.definitions[0]
+    returned_definition.name = "renamed_tool"
+
+    original_name_result = toolset.execute(
+        "configured_tool",
+        {"value": "expected"},
+        context=ToolContext(customer_id="customer-001"),
+    )
+    renamed_name_result = toolset.execute(
+        "renamed_tool",
+        {"value": "expected"},
+        context=ToolContext(customer_id="customer-001"),
+    )
+
+    assert toolset.definitions[0].name == "configured_tool"
+    assert original_name_result == "expected"
+    assert renamed_name_result == {
+        "error": {
+            "code": "unknown_tool",
+            "message": (
+                "The requested tool is not available. Use an available tool instead."
+            ),
+        }
+    }
+
+
+def test_toolset_preserves_schema_when_returned_definition_parameters_change() -> None:
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+    returned_definition = toolset.definitions[0]
+
+    returned_properties = returned_definition.parameters["properties"]
+    assert isinstance(returned_properties, dict)
+
+    returned_value_schema = returned_properties["value"]
+    assert isinstance(returned_value_schema, dict)
+
+    returned_value_schema["type"] = "integer"
+
+    preserved_definition = toolset.definitions[0]
+
+    preserved_properties = preserved_definition.parameters["properties"]
+    assert isinstance(preserved_properties, dict)
+
+    preserved_value_schema = preserved_properties["value"]
+    assert isinstance(preserved_value_schema, dict)
+
+    assert preserved_value_schema["type"] == "string"
+
+
+def test_toolset_preserves_configuration_when_source_tool_definition_changes() -> None:
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+
+    configured_tool.definition.name = "renamed_tool"
+    source_properties = configured_tool.definition.parameters["properties"]
+    assert isinstance(source_properties, dict)
+
+    source_value_schema = source_properties["value"]
+    assert isinstance(source_value_schema, dict)
+
+    source_value_schema["type"] = "integer"
+
+    preserved_definition = toolset.definitions[0]
+
+    assert preserved_definition.name == "configured_tool"
+
+    preserved_properties = preserved_definition.parameters["properties"]
+    assert isinstance(preserved_properties, dict)
+
+    preserved_value_schema = preserved_properties["value"]
+    assert isinstance(preserved_value_schema, dict)
+
+    assert preserved_value_schema["type"] == "string"
+
+    original_tool_result = toolset.execute(
+        "configured_tool",
+        {"value": "expected"},
+        context=ToolContext(customer_id="customer-001"),
+    )
+    assert original_tool_result == "expected"
+
+    renamed_tool_result = toolset.execute(
+        "renamed_tool",
+        {"value": "expected"},
+        context=ToolContext(customer_id="customer-001"),
+    )
+    assert renamed_tool_result == {
+        "error": {
+            "code": "unknown_tool",
+            "message": (
+                "The requested tool is not available. Use an available tool instead."
+            ),
+        }
+    }
