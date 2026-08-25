@@ -3,8 +3,6 @@ import pytest
 import customer_support_agent.tools.order as order_module
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.tools.order import (
-    FindOrderArguments,
-    GetCustomerOrdersArguments,
     find_order,
     get_customer_orders,
 )
@@ -64,14 +62,6 @@ def test_get_customer_orders_returns_invalid_arguments_error(arguments: object) 
     }
 
 
-def test_get_customer_orders_arguments_schema_describes_empty_object_contract() -> None:
-    schema = GetCustomerOrdersArguments.model_json_schema()
-
-    assert schema["type"] == "object"
-    assert schema["properties"] == {}
-    assert schema["additionalProperties"] is False
-
-
 def test_get_customer_orders_definition_describes_customer_scoped_lookup() -> None:
     definition = get_customer_orders.definition
 
@@ -80,7 +70,9 @@ def test_get_customer_orders_definition_describes_customer_scoped_lookup() -> No
         "Retrieve the current customer's orders, including each order's "
         "order_id and current status."
     )
-    assert definition.parameters == GetCustomerOrdersArguments.model_json_schema()
+    assert definition.parameters["type"] == "object"
+    assert definition.parameters["properties"] == {}
+    assert definition.parameters["additionalProperties"] is False
 
 
 @pytest.mark.parametrize(
@@ -158,9 +150,13 @@ def test_find_order_returns_invalid_arguments_error(arguments: object) -> None:
     }
 
 
-def test_find_order_arguments_schema_describes_input_contract() -> None:
-    schema = FindOrderArguments.model_json_schema()
-    order_id_schema = schema["properties"]["order_id"]
+def test_find_order_definition_describes_order_id_input() -> None:
+    schema = find_order.definition.parameters
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+
+    order_id_schema = properties["order_id"]
+    assert isinstance(order_id_schema, dict)
 
     assert schema["type"] == "object"
     assert schema["additionalProperties"] is False
@@ -178,4 +174,3 @@ def test_find_order_definition_describes_customer_scoped_lookup() -> None:
         "Retrieve the current status of an order belonging to the current "
         "customer by its order_id."
     )
-    assert definition.parameters == FindOrderArguments.model_json_schema()

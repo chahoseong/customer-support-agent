@@ -1,9 +1,6 @@
 import pytest
 
-from customer_support_agent.tools.shipment import (
-    FindShipmentArguments,
-    find_shipment,
-)
+from customer_support_agent.tools.shipment import find_shipment
 from customer_support_agent.tools.tool import ToolContext
 
 
@@ -77,9 +74,13 @@ def test_find_shipment_returns_invalid_arguments_error(arguments: object) -> Non
     }
 
 
-def test_find_shipment_arguments_schema_describes_input_contract() -> None:
-    schema = FindShipmentArguments.model_json_schema()
-    order_id_schema = schema["properties"]["order_id"]
+def test_find_shipment_definition_describes_order_id_input() -> None:
+    schema = find_shipment.definition.parameters
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+
+    order_id_schema = properties["order_id"]
+    assert isinstance(order_id_schema, dict)
 
     assert schema["type"] == "object"
     assert schema["additionalProperties"] is False
@@ -101,4 +102,3 @@ def test_find_shipment_definition_describes_conditional_customer_scoped_lookup()
         "Returns order_id and shipment_status, or shipment_not_found when no "
         "shipment information is available."
     )
-    assert definition.parameters == FindShipmentArguments.model_json_schema()
