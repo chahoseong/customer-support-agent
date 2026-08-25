@@ -1,26 +1,19 @@
 import pytest
-from pydantic import BaseModel, ConfigDict
 
 from customer_support_agent.tools.tool import Tool, ToolContext, tool
 from customer_support_agent.tools.toolset import Toolset
 
 
-class ExampleArguments(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    value: str
-
-
 def test_toolset_exposes_definitions_in_configured_order() -> None:
     @tool
-    def first_tool(arguments: ExampleArguments) -> str:
+    def first_tool(value: str) -> str:
         """Return the first value."""
-        return arguments.value
+        return value
 
     @tool
-    def second_tool(arguments: ExampleArguments) -> str:
+    def second_tool(value: str) -> str:
         """Return the second value."""
-        return arguments.value
+        return value
 
     toolset = Toolset(
         tools=(
@@ -38,9 +31,9 @@ def test_toolset_exposes_definitions_in_configured_order() -> None:
 def test_toolset_raises_value_error_for_duplicate_tool_names() -> None:
     def create_duplicate_tool(result: str) -> Tool[str]:
         @tool
-        def duplicate_tool(arguments: ExampleArguments) -> str:
+        def duplicate_tool(value: str) -> str:
             """Return a configured value."""
-            return f"{result}: {arguments.value}"
+            return f"{result}: {value}"
 
         return duplicate_tool
 
@@ -58,17 +51,17 @@ def test_toolset_raises_value_error_for_duplicate_tool_names() -> None:
 
 def test_toolset_executes_configured_tool_by_name() -> None:
     @tool
-    def unselected_tool(arguments: ExampleArguments) -> str:
+    def unselected_tool(value: str) -> str:
         """Return an unselected value."""
-        return f"unselected: {arguments.value}"
+        return f"unselected: {value}"
 
     @tool
     def selected_tool(
         context: ToolContext,
-        arguments: ExampleArguments,
+        value: str,
     ) -> str:
         """Return the selected customer value."""
-        return f"{context.customer_id}: {arguments.value}"
+        return f"{context.customer_id}: {value}"
 
     toolset = Toolset(
         tools=(
@@ -88,9 +81,9 @@ def test_toolset_executes_configured_tool_by_name() -> None:
 
 def test_toolset_returns_unknown_tool_when_name_is_not_configured() -> None:
     @tool
-    def configured_tool(arguments: ExampleArguments) -> str:
+    def configured_tool(value: str) -> str:
         """Return the configured value."""
-        return arguments.value
+        return value
 
     toolset = Toolset(tools=(configured_tool,))
 
@@ -112,9 +105,9 @@ def test_toolset_returns_unknown_tool_when_name_is_not_configured() -> None:
 
 def test_toolset_returns_tool_execution_failed_when_executor_raises() -> None:
     @tool
-    def failing_tool(arguments: ExampleArguments) -> str:
+    def failing_tool(value: str) -> str:
         """Fail while processing the provided value."""
-        raise RuntimeError(f"sensitive failure: {arguments.value}")
+        raise RuntimeError(f"sensitive failure: {value}")
 
     toolset = Toolset(tools=(failing_tool,))
 
@@ -134,14 +127,14 @@ def test_toolset_returns_tool_execution_failed_when_executor_raises() -> None:
 
 def test_toolset_preserves_configuration_when_source_collection_changes() -> None:
     @tool
-    def first_tool(arguments: ExampleArguments) -> str:
+    def first_tool(value: str) -> str:
         """Return the first value."""
-        return arguments.value
+        return value
 
     @tool
-    def second_tool(arguments: ExampleArguments) -> str:
+    def second_tool(value: str) -> str:
         """Return the second value."""
-        return arguments.value
+        return value
 
     source_tools = [first_tool]
     toolset = Toolset(tools=source_tools)
@@ -155,9 +148,9 @@ def test_toolset_returns_invalid_arguments_when_arguments_do_not_match_tool_sche
     None
 ):
     @tool
-    def configured_tool(arguments: ExampleArguments) -> str:
+    def configured_tool(value: str) -> str:
         """Return the configured value."""
-        return arguments.value
+        return value
 
     toolset = Toolset(tools=(configured_tool,))
 

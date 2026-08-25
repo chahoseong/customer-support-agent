@@ -1,10 +1,6 @@
 from typing import Annotated, TypedDict
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-)
+from pydantic import Field
 
 from customer_support_agent.domain.fixtures import (
     ORDERS,
@@ -29,8 +25,9 @@ class FindShipmentSuccess(TypedDict):
 type FindShipmentResult = FindShipmentSuccess | ToolError
 
 
-class FindShipmentArguments(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
+@tool
+def find_shipment(
+    context: ToolContext,
     order_id: Annotated[
         str,
         Field(
@@ -38,17 +35,9 @@ class FindShipmentArguments(BaseModel):
             pattern=r"^\S(?:[\s\S]*\S)?$",
             description="Opaque order identifier to look up.",
         ),
-    ]
-
-
-@tool
-def find_shipment(
-    context: ToolContext,
-    arguments: FindShipmentArguments,
+    ],
 ) -> FindShipmentResult:
     """Retrieve detailed shipment information for an order belonging to the current customer after an order lookup indicates it is needed. Returns order_id and shipment_status, or shipment_not_found when no shipment information is available."""
-    order_id = arguments.order_id
-
     order = ORDERS.get(order_id)
     if order is None or order.customer_id != context.customer_id:
         return create_tool_error("shipment_not_found")

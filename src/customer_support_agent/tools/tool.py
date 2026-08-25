@@ -1,12 +1,18 @@
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import get_type_hints
+from typing import Any, get_type_hints
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, create_model
 
-from .definitions import ToolDefinition as ToolDefinition
 from .errors import ToolError, create_tool_error
+
+
+@dataclass
+class ToolDefinition:
+    name: str
+    description: str
+    parameters: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,10 +48,15 @@ class Tool[ResultT]:
         except ValidationError:
             return create_tool_error("invalid_arguments")
 
-        if self._takes_context:
-            return self._executor(context, parsed_arguments)
+        validated_arguments = {
+            name: getattr(parsed_arguments, name)
+            for name in self._arguments_type.model_fields
+        }
 
-        return self._executor(parsed_arguments)
+        if self._takes_context:
+            return self._executor(context, **validated_arguments)
+
+        return self._executor(**validated_arguments)
 
 
 def tool[ResultT](executor: Callable[..., ResultT]) -> Tool[ResultT]:
@@ -56,48 +67,56 @@ def tool[ResultT](executor: Callable[..., ResultT]) -> Tool[ResultT]:
 
     parameters = tuple(inspect.signature(executor).parameters.values())
 
-    if len(parameters) not in (1, 2):
-        raise TypeError(
-            "The tool executor must declare one arguments parameter "
-            "and may declare one leading ToolContext parameter."
-        )
     if any(
-        parameter.kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD
+        parameter.kind
+        not in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
         for parameter in parameters
     ):
         raise TypeError(
-            "Tool executor parameters must be positional-or-keyword parameters."
+            "Tool executor parameters must be positional-or-keyword "
+            "or keyword-only parameters."
         )
-    if any(
-        parameter.default is not inspect.Parameter.empty for parameter in parameters
-    ):
-        raise TypeError("Tool executor parameters must not define default values.")
+    type_hints = get_type_hints(executor, include_extras=True)
 
-    type_hints = get_type_hints(executor)
-
-    takes_context = len(parameters) == 2
-    if takes_context and type_hints.get(parameters[0].name) is not ToolContext:
-        raise TypeError(
-            "The first parameter of a two-parameter tool executor must be ToolContext."
-        )
-
-    arguments_parameter = parameters[-1]
-    if arguments_parameter.name not in type_hints:
-        raise TypeError(
-            "The tool executor's arguments parameter requires a type annotation."
-        )
-
-    arguments_annotation = type_hints[arguments_parameter.name]
-    if (
-        not isinstance(arguments_annotation, type)
-        or arguments_annotation is BaseModel
-        or not issubclass(arguments_annotation, BaseModel)
+    context_parameters = tuple(
+        parameter
+        for parameter in parameters
+        if type_hints.get(parameter.name) is ToolContext
+    )
+    if context_parameters and (
+        len(context_parameters) != 1
+        or context_parameters[0].name != parameters[0].name
+        or context_parameters[0].kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD
     ):
         raise TypeError(
-            "The tool executor requires a concrete BaseModel arguments type."
+            "ToolContext must be the first positional-or-keyword parameter."
         )
 
-    arguments_type = arguments_annotation
+    takes_context = bool(context_parameters)
+    if takes_context and parameters[0].default is not inspect.Parameter.empty:
+        raise TypeError("The ToolContext parameter must not define a default value.")
+
+    exposed_parameters = parameters[1:] if takes_context else parameters
+
+    for parameter in exposed_parameters:
+        if parameter.name not in type_hints:
+            raise TypeError("Tool executor parameters require type annotations.")
+
+    field_definitions: dict[str, Any] = {
+        parameter.name: (
+            type_hints[parameter.name],
+            ... if parameter.default is inspect.Parameter.empty else parameter.default,
+        )
+        for parameter in exposed_parameters
+    }
+    arguments_type = create_model(
+        f"{executor.__name__}Arguments",
+        __config__=ConfigDict(strict=True, extra="forbid"),
+        **field_definitions,
+    )
 
     return Tool(
         definition=ToolDefinition(
