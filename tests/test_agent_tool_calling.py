@@ -75,19 +75,30 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
     ]
 
 
-def test_agent_preserves_message_history_across_two_tool_call_rounds() -> None:
+def test_agent_preserves_message_history_across_rounds_with_different_tools() -> None:
     @tool
-    def configured_tool(
+    def first_tool(
         context: ToolContext,
-        value: str,
+        first_value: str,
     ) -> dict[str, str]:
-        """Return the configured value with its customer."""
+        """Return the first value with its customer."""
         return {
             "customer_id": context.customer_id,
-            "value": value,
+            "first_value": first_value,
         }
 
-    toolset = Toolset(tools=(configured_tool,))
+    @tool
+    def second_tool(
+        context: ToolContext,
+        second_value: str,
+    ) -> dict[str, str]:
+        """Return the second value with its customer."""
+        return {
+            "customer_id": context.customer_id,
+            "second_value": second_value,
+        }
+
+    toolset = Toolset(tools=(first_tool, second_tool))
     context = ToolContext(customer_id="customer-001")
 
     user_request = ModelRequest(
@@ -101,8 +112,8 @@ def test_agent_preserves_message_history_across_two_tool_call_rounds() -> None:
         tool_calls=(
             ToolCall(
                 id="call-1",
-                name=configured_tool.definition.name,
-                arguments={"value": "first"},
+                name=first_tool.definition.name,
+                arguments={"first_value": "first"},
             ),
         )
     )
@@ -112,7 +123,7 @@ def test_agent_preserves_message_history_across_two_tool_call_rounds() -> None:
                 tool_call_id="call-1",
                 result={
                     "customer_id": "customer-001",
-                    "value": "first",
+                    "first_value": "first",
                 },
             ),
         )
@@ -121,8 +132,8 @@ def test_agent_preserves_message_history_across_two_tool_call_rounds() -> None:
         tool_calls=(
             ToolCall(
                 id="call-2",
-                name=configured_tool.definition.name,
-                arguments={"value": "second"},
+                name=second_tool.definition.name,
+                arguments={"second_value": "second"},
             ),
         )
     )
@@ -132,7 +143,7 @@ def test_agent_preserves_message_history_across_two_tool_call_rounds() -> None:
                 tool_call_id="call-2",
                 result={
                     "customer_id": "customer-001",
-                    "value": "second",
+                    "second_value": "second",
                 },
             ),
         )
