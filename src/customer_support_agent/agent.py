@@ -8,8 +8,7 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models import ChatModel
-from customer_support_agent.tools.tool import ToolContext
-from customer_support_agent.tools.toolset import Toolset
+from customer_support_agent.tools import ToolContext, Toolset
 
 logger = logging.getLogger(__name__)
 
