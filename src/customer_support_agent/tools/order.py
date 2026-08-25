@@ -4,8 +4,8 @@ from pydantic import Field
 
 from customer_support_agent.domain.fixtures import ORDERS
 from customer_support_agent.domain.models import Order, OrderStatus
-from customer_support_agent.tools.errors import ToolError, create_tool_error
 
+from .errors import ToolError, create_tool_error
 from .tool import ToolContext, tool
 
 
