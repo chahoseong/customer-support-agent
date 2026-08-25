@@ -11,7 +11,22 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models.openai import OpenAIChatModel
-from customer_support_agent.tools.get_order import GET_ORDER_TOOL_DEFINITION
+from customer_support_agent.tools.tool import ToolDefinition
+
+EXAMPLE_TOOL_DEFINITION = ToolDefinition(
+    name="example_tool",
+    description="Return an example value.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "value": {
+                "type": "string",
+            }
+        },
+        "required": ["value"],
+        "additionalProperties": False,
+    },
+)
 
 
 def test_generate_converts_text_request_and_response(
@@ -25,7 +40,7 @@ def test_generate_converts_text_request_and_response(
                     "finish_reason": "stop",
                     "index": 0,
                     "message": {
-                        "content": "Your order is being processed.",
+                        "content": "The example value was processed.",
                         "role": "assistant",
                     },
                 }
@@ -51,8 +66,8 @@ def test_generate_converts_text_request_and_response(
     )
 
     response = model.generate(
-        (ModelRequest(parts=(UserPromptPart(content="Where is order-001?"),)),),
-        (GET_ORDER_TOOL_DEFINITION,),
+        (ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),),
+        (EXAMPLE_TOOL_DEFINITION,),
     )
 
     openai_constructor.assert_called_once_with(
@@ -64,23 +79,23 @@ def test_generate_converts_text_request_and_response(
         messages=[
             {
                 "role": "user",
-                "content": "Where is order-001?",
+                "content": "Use the example tool.",
             }
         ],
         tools=[
             {
                 "type": "function",
                 "function": {
-                    "name": GET_ORDER_TOOL_DEFINITION.name,
-                    "description": GET_ORDER_TOOL_DEFINITION.description,
-                    "parameters": GET_ORDER_TOOL_DEFINITION.parameters,
+                    "name": EXAMPLE_TOOL_DEFINITION.name,
+                    "description": EXAMPLE_TOOL_DEFINITION.description,
+                    "parameters": EXAMPLE_TOOL_DEFINITION.parameters,
                 },
             }
         ],
         parallel_tool_calls=False,
     )
 
-    assert response == ModelResponse(content="Your order is being processed.")
+    assert response == ModelResponse(content="The example value was processed.")
 
 
 def test_generate_converts_tool_call_response(
@@ -101,8 +116,8 @@ def test_generate_converts_tool_call_response(
                                 "id": "call-1",
                                 "type": "function",
                                 "function": {
-                                    "name": "get_order",
-                                    "arguments": '{"order_id":"order-001"}',
+                                    "name": EXAMPLE_TOOL_DEFINITION.name,
+                                    "arguments": '{"value":"expected"}',
                                 },
                             }
                         ],
@@ -130,16 +145,16 @@ def test_generate_converts_tool_call_response(
     )
 
     response = model.generate(
-        (ModelRequest(parts=(UserPromptPart(content="Where is order-001?"),)),),
-        (GET_ORDER_TOOL_DEFINITION,),
+        (ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),),
+        (EXAMPLE_TOOL_DEFINITION,),
     )
 
     assert response == ModelResponse(
         tool_calls=(
             ToolCall(
                 id="call-1",
-                name="get_order",
-                arguments={"order_id": "order-001"},
+                name=EXAMPLE_TOOL_DEFINITION.name,
+                arguments={"value": "expected"},
             ),
         )
     )
@@ -156,7 +171,7 @@ def test_generate_converts_tool_call_history_and_tool_result(
                     "finish_reason": "stop",
                     "index": 0,
                     "message": {
-                        "content": "Your order is being processed.",
+                        "content": "The example value was processed.",
                         "role": "assistant",
                     },
                 }
@@ -180,13 +195,13 @@ def test_generate_converts_tool_call_history_and_tool_result(
 
     model.generate(
         (
-            ModelRequest(parts=(UserPromptPart(content="Where is order-001?"),)),
+            ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),
             ModelResponse(
                 tool_calls=(
                     ToolCall(
                         id="call-1",
-                        name="get_order",
-                        arguments={"order_id": "order-001"},
+                        name=EXAMPLE_TOOL_DEFINITION.name,
+                        arguments={"value": "expected"},
                     ),
                 )
             ),
@@ -194,22 +209,19 @@ def test_generate_converts_tool_call_history_and_tool_result(
                 parts=(
                     ToolResultPart(
                         tool_call_id="call-1",
-                        result={
-                            "order_id": "order-001",
-                            "status": "processing",
-                        },
+                        result={"value": "expected"},
                     ),
                 )
             ),
         ),
-        (GET_ORDER_TOOL_DEFINITION,),
+        (EXAMPLE_TOOL_DEFINITION,),
     )
 
     sent_messages = client.chat.completions.create.call_args.kwargs["messages"]
     assert sent_messages == [
         {
             "role": "user",
-            "content": "Where is order-001?",
+            "content": "Use the example tool.",
         },
         {
             "role": "assistant",
@@ -219,8 +231,8 @@ def test_generate_converts_tool_call_history_and_tool_result(
                     "id": "call-1",
                     "type": "function",
                     "function": {
-                        "name": "get_order",
-                        "arguments": '{"order_id": "order-001"}',
+                        "name": EXAMPLE_TOOL_DEFINITION.name,
+                        "arguments": '{"value": "expected"}',
                     },
                 }
             ],
@@ -228,6 +240,6 @@ def test_generate_converts_tool_call_history_and_tool_result(
         {
             "role": "tool",
             "tool_call_id": "call-1",
-            "content": ('{"order_id": "order-001", "status": "processing"}'),
+            "content": '{"value": "expected"}',
         },
     ]
