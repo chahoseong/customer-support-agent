@@ -8,41 +8,39 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models import ChatModel
-from customer_support_agent.tools.errors import create_tool_error
-from customer_support_agent.tools.get_order import (
-    GET_ORDER_TOOL_DEFINITION,
-    get_order,
-)
+from customer_support_agent.tools.tool import ToolContext
+from customer_support_agent.tools.toolset import Toolset
 
 logger = logging.getLogger(__name__)
 
 _MAX_MODEL_CALLS = 5
 
-type AgentRunErrorCode = Literal[
+type AgentErrorCode = Literal[
     "invalid_model_response",
     "model_call_failed",
     "model_call_limit_exceeded",
 ]
 
 
-_AGENT_RUN_ERROR_MESSAGES: dict[AgentRunErrorCode, str] = {
+_AGENT_ERROR_MESSAGES: dict[AgentErrorCode, str] = {
     "invalid_model_response": "Model response has no displayable content.",
     "model_call_failed": "Model call failed.",
     "model_call_limit_exceeded": "Model call limit exceeded.",
 }
 
 
-class AgentRunError(RuntimeError):
-    def __init__(self, code: AgentRunErrorCode) -> None:
+class AgentError(RuntimeError):
+    def __init__(self, code: AgentErrorCode) -> None:
         self.code = code
-        super().__init__(_AGENT_RUN_ERROR_MESSAGES[code])
+        super().__init__(_AGENT_ERROR_MESSAGES[code])
 
 
 class Agent:
-    def __init__(self, model: ChatModel) -> None:
+    def __init__(self, model: ChatModel, toolset: Toolset) -> None:
         self._model = model
+        self._toolset = toolset
 
-    def run(self, user_message: str) -> str:
+    def run(self, user_message: str, *, context: ToolContext) -> str:
         messages: list[ModelMessage] = [
             ModelRequest(parts=(UserPromptPart(content=user_message),))
         ]
@@ -60,14 +58,14 @@ class Agent:
             try:
                 response = self._model.generate(
                     messages,
-                    (GET_ORDER_TOOL_DEFINITION,),
+                    self._toolset.definitions,
                 )
             except Exception as error:
                 logger.error(
                     "The run stopped because the model call failed.",
                 )
 
-                raise AgentRunError("model_call_failed") from error
+                raise AgentError("model_call_failed") from error
 
             if response.tool_calls:
                 if model_call_count >= _MAX_MODEL_CALLS:
@@ -77,7 +75,7 @@ class Agent:
                         _MAX_MODEL_CALLS,
                     )
 
-                    raise AgentRunError("model_call_limit_exceeded")
+                    raise AgentError("model_call_limit_exceeded")
 
                 messages.append(response)
                 tool_results: list[ToolResultPart] = []
@@ -90,25 +88,11 @@ class Agent:
                     logger.info(" ⨽ Call ID: %r", tool_call.id)
                     logger.info(" ⨽ Arguments: %r", tool_call.arguments)
 
-                    result: object
-
-                    if tool_call.name != "get_order":
-                        logger.warning(
-                            "The requested tool %r is not available.",
-                            tool_call.name,
-                        )
-
-                        result = create_tool_error("unknown_tool")
-                    else:
-                        try:
-                            result = get_order(tool_call.arguments)
-                        except Exception:
-                            logger.warning(
-                                "The %r tool failed unexpectedly.",
-                                tool_call.name,
-                            )
-
-                            result = create_tool_error("tool_execution_failed")
+                    result = self._toolset.execute(
+                        tool_call.name,
+                        tool_call.arguments,
+                        context=context,
+                    )
 
                     logger.info(" ⨽ Result: %r", result)
 
@@ -136,7 +120,7 @@ class Agent:
                     "The run stopped because the model returned no displayable content."
                 )
 
-                raise AgentRunError("invalid_model_response")
+                raise AgentError("invalid_model_response")
 
             logger.info("The run finished with the model's final response.")
 

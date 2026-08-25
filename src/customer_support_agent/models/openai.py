@@ -16,7 +16,7 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models.base import ChatModel
-from customer_support_agent.tools.definitions import ToolDefinition
+from customer_support_agent.tools.tool import ToolDefinition
 
 
 def _to_sdk_messages(

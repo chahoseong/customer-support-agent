@@ -2,8 +2,7 @@ from collections.abc import Sequence
 
 import pytest
 
-import customer_support_agent.agent as agent_module
-from customer_support_agent.agent import Agent, AgentRunError
+from customer_support_agent.agent import Agent, AgentError
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
@@ -13,8 +12,8 @@ from customer_support_agent.messages import (
     UserPromptPart,
 )
 from customer_support_agent.models import ChatModel
-from customer_support_agent.tools.definitions import ToolDefinition
-from customer_support_agent.tools.get_order import GET_ORDER_TOOL_DEFINITION
+from customer_support_agent.tools.tool import ToolContext, ToolDefinition, tool
+from customer_support_agent.tools.toolset import Toolset
 
 
 class ScriptedModel(ChatModel):
@@ -33,6 +32,10 @@ class ScriptedModel(ChatModel):
         return next(self._responses)
 
 
+EMPTY_TOOLSET = Toolset(tools=())
+TEST_CONTEXT = ToolContext(customer_id="customer-001")
+
+
 def test_agent_returns_final_text_without_tool_calls() -> None:
     model = ScriptedModel(
         [
@@ -40,9 +43,9 @@ def test_agent_returns_final_text_without_tool_calls() -> None:
         ]
     )
 
-    agent = Agent(model)
+    agent = Agent(model, EMPTY_TOOLSET)
 
-    result = agent.run("Where is my order?")
+    result = agent.run("Where is my order?", context=TEST_CONTEXT)
 
     assert result == "Your order is being processed."
 
@@ -56,10 +59,10 @@ def test_agent_starts_each_run_with_new_message_history() -> None:
             ModelResponse(content="Second response"),
         ]
     )
-    agent = Agent(model)
+    agent = Agent(model, EMPTY_TOOLSET)
 
-    first_result = agent.run("First request")
-    second_result = agent.run("Second request")
+    first_result = agent.run("First request", context=TEST_CONTEXT)
+    second_result = agent.run("Second request", context=TEST_CONTEXT)
 
     assert first_result == "First response"
     assert second_result == "Second response"
@@ -70,13 +73,29 @@ def test_agent_starts_each_run_with_new_message_history() -> None:
 
 
 def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
-    user_request = ModelRequest(parts=(UserPromptPart(content="Where is order-002?"),))
+    @tool
+    def configured_tool(
+        context: ToolContext,
+        value: str,
+    ) -> dict[str, str]:
+        """Return the configured value with its customer."""
+        return {
+            "customer_id": context.customer_id,
+            "value": value,
+        }
+
+    toolset = Toolset(tools=(configured_tool,))
+    context = ToolContext(customer_id="customer-001")
+
+    user_request = ModelRequest(
+        parts=(UserPromptPart(content="Use the configured tool."),)
+    )
     tool_call_response = ModelResponse(
         tool_calls=(
             ToolCall(
                 id="call-1",
-                name="get_order",
-                arguments={"order_id": "order-002"},
+                name=configured_tool.definition.name,
+                arguments={"value": "expected"},
             ),
         )
     )
@@ -85,13 +104,13 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
             ToolResultPart(
                 tool_call_id="call-1",
                 result={
-                    "order_id": "order-002",
-                    "status": "shipped",
+                    "customer_id": "customer-001",
+                    "value": "expected",
                 },
             ),
         )
     )
-    final_response = ModelResponse(content="Your order has shipped.")
+    final_response = ModelResponse(content="The configured value is expected.")
     model = ScriptedModel(
         [
             tool_call_response,
@@ -99,11 +118,11 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
         ]
     )
 
-    agent = Agent(model)
+    agent = Agent(model, toolset)
 
-    result = agent.run("Where is order-002?")
+    result = agent.run("Use the configured tool.", context=context)
 
-    assert result == "Your order has shipped."
+    assert result == "The configured value is expected."
     assert model.requests == [
         (user_request,),
         (
@@ -114,11 +133,25 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
     ]
 
 
-def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
+def test_agent_preserves_message_history_across_two_tool_call_rounds() -> None:
+    @tool
+    def configured_tool(
+        context: ToolContext,
+        value: str,
+    ) -> dict[str, str]:
+        """Return the configured value with its customer."""
+        return {
+            "customer_id": context.customer_id,
+            "value": value,
+        }
+
+    toolset = Toolset(tools=(configured_tool,))
+    context = ToolContext(customer_id="customer-001")
+
     user_request = ModelRequest(
         parts=(
             UserPromptPart(
-                content="Compare order-001 and order-002.",
+                content="Process the first and second values.",
             ),
         )
     )
@@ -126,8 +159,8 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
         tool_calls=(
             ToolCall(
                 id="call-1",
-                name="get_order",
-                arguments={"order_id": "order-001"},
+                name=configured_tool.definition.name,
+                arguments={"value": "first"},
             ),
         )
     )
@@ -136,8 +169,8 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
             ToolResultPart(
                 tool_call_id="call-1",
                 result={
-                    "order_id": "order-001",
-                    "status": "processing",
+                    "customer_id": "customer-001",
+                    "value": "first",
                 },
             ),
         )
@@ -146,8 +179,8 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
         tool_calls=(
             ToolCall(
                 id="call-2",
-                name="get_order",
-                arguments={"order_id": "order-002"},
+                name=configured_tool.definition.name,
+                arguments={"value": "second"},
             ),
         )
     )
@@ -156,14 +189,14 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
             ToolResultPart(
                 tool_call_id="call-2",
                 result={
-                    "order_id": "order-002",
-                    "status": "shipped",
+                    "customer_id": "customer-001",
+                    "value": "second",
                 },
             ),
         )
     )
     final_response = ModelResponse(
-        content="Order-001 is processing and order-002 has shipped."
+        content="The first and second values were processed."
     )
 
     model = ScriptedModel(
@@ -174,9 +207,11 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
         ]
     )
 
-    result = Agent(model).run("Compare order-001 and order-002.")
+    result = Agent(model, toolset).run(
+        "Process the first and second values.", context=context
+    )
 
-    assert result == "Order-001 is processing and order-002 has shipped."
+    assert result == "The first and second values were processed."
     assert model.requests == [
         (user_request,),
         (
@@ -195,13 +230,29 @@ def test_agent_handles_two_tool_call_rounds_before_final_response() -> None:
 
 
 def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
+    @tool
+    def configured_tool(
+        context: ToolContext,
+        value: str,
+    ) -> dict[str, str]:
+        """Return the configured value with its customer."""
+        return {
+            "customer_id": context.customer_id,
+            "value": value,
+        }
+
+    toolset = Toolset(tools=(configured_tool,))
+
+    user_message = "Process the configured value."
+    user_request = ModelRequest(parts=(UserPromptPart(content=user_message),))
+
     tool_call_response = ModelResponse(
-        content="Let me check that order.",
+        content="The configured value is available.",
         tool_calls=(
             ToolCall(
                 id="call-1",
-                name="get_order",
-                arguments={"order_id": "order-002"},
+                name=configured_tool.definition.name,
+                arguments={"value": "expected"},
             ),
         ),
     )
@@ -210,8 +261,8 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
             ToolResultPart(
                 tool_call_id="call-1",
                 result={
-                    "order_id": "order-002",
-                    "status": "shipped",
+                    "customer_id": "customer-001",
+                    "value": "expected",
                 },
             ),
         )
@@ -219,17 +270,21 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
     model = ScriptedModel(
         [
             tool_call_response,
-            ModelResponse(content="Your order has shipped."),
+            ModelResponse(content="The configured value is expected."),
         ]
     )
 
-    result = Agent(model).run("Where is order-002?")
+    result = Agent(model, toolset).run(user_message, context=TEST_CONTEXT)
 
-    assert result == "Your order has shipped."
-    assert model.requests[1][-2:] == (
-        tool_call_response,
-        tool_result_request,
-    )
+    assert result == "The configured value is expected."
+    assert model.requests == [
+        (user_request,),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -249,13 +304,19 @@ def test_agent_raises_invalid_model_response_for_content_without_displayable_tex
         ]
     )
 
-    with pytest.raises(AgentRunError) as exc_info:
-        Agent(model).run("Where is my order?")
+    with pytest.raises(AgentError) as exc_info:
+        Agent(model, EMPTY_TOOLSET).run(
+            "Where is my order?",
+            context=TEST_CONTEXT,
+        )
 
     assert exc_info.value.code == "invalid_model_response"
 
 
 def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
+    user_message = "Use an unavailable tool."
+    user_request = ModelRequest(parts=(UserPromptPart(content=user_message),))
+
     tool_call_response = ModelResponse(
         tool_calls=(
             ToolCall(
@@ -289,32 +350,38 @@ def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
         ]
     )
 
-    result = Agent(model).run("Send a message.")
+    result = Agent(model, EMPTY_TOOLSET).run(user_message, context=TEST_CONTEXT)
 
     assert result == "I cannot use that tool."
+    assert model.requests == [
+        (user_request,),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
+    ]
 
-    second_model_messages = model.requests[1]
 
-    assert second_model_messages[-2:] == (
-        tool_call_response,
-        tool_result_request,
-    )
-
-
-def test_agent_returns_unexpected_tool_failure_to_model_and_continues(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fail_get_order(_arguments: object) -> object:
+def test_agent_returns_tool_execution_failed_error_to_model_and_continues() -> None:
+    @tool
+    def broken_tool(
+        value: str,
+    ) -> object:
+        """Raise runtime error"""
         raise RuntimeError("sensitive internal failure")
 
-    monkeypatch.setattr(agent_module, "get_order", fail_get_order)
+    toolset = Toolset(tools=(broken_tool,))
+
+    user_message = "Complete the configured action."
+    user_request = ModelRequest(parts=(UserPromptPart(content=user_message),))
 
     tool_call_response = ModelResponse(
         tool_calls=(
             ToolCall(
                 id="call-1",
-                name="get_order",
-                arguments={"order_id": "order-001"},
+                name=broken_tool.definition.name,
+                arguments={"value": "expected"},
             ),
         )
     )
@@ -337,20 +404,21 @@ def test_agent_returns_unexpected_tool_failure_to_model_and_continues(
     model = ScriptedModel(
         [
             tool_call_response,
-            ModelResponse(content="I could not retrieve the order."),
+            ModelResponse(content="I could not complete the action."),
         ]
     )
 
-    result = Agent(model).run("Where is order-001?")
+    result = Agent(model, toolset).run(user_message, context=TEST_CONTEXT)
 
-    assert result == "I could not retrieve the order."
-
-    second_model_messages = model.requests[1]
-
-    assert second_model_messages[-2:] == (
-        tool_call_response,
-        tool_result_request,
-    )
+    assert result == "I could not complete the action."
+    assert model.requests == [
+        (user_request,),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
+    ]
 
 
 def test_agent_wraps_model_failure_without_exposing_details() -> None:
@@ -364,25 +432,27 @@ def test_agent_wraps_model_failure_without_exposing_details() -> None:
         ) -> ModelResponse:
             raise model_error
 
-    with pytest.raises(AgentRunError) as exc_info:
-        Agent(FailingModel()).run("Where is my order?")
+    with pytest.raises(AgentError) as exc_info:
+        Agent(FailingModel(), EMPTY_TOOLSET).run(
+            "Where is my order?",
+            context=TEST_CONTEXT,
+        )
 
     assert exc_info.value.code == "model_call_failed"
     assert "sensitive provider failure" not in str(exc_info.value)
     assert exc_info.value.__cause__ is model_error
 
 
-def test_agent_stops_before_executing_tool_from_fifth_model_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tool_arguments = [{"order_id": f"order-{index:03d}"} for index in range(1, 6)]
-    executed_arguments: list[object] = []
+def test_agent_stops_before_executing_tool_from_fifth_model_call() -> None:
+    tool_values = [f"value-{index}" for index in range(1, 6)]
+    tool_arguments = [{"value": value} for value in tool_values]
+    executed_values: list[str] = []
 
-    def record_get_order(arguments: object) -> object:
-        executed_arguments.append(arguments)
-        return {"status": "recorded"}
-
-    monkeypatch.setattr(agent_module, "get_order", record_get_order)
+    @tool
+    def recording_tool(value: str) -> dict[str, str]:
+        """Record and return the configured value."""
+        executed_values.append(value)
+        return {"value": value}
 
     model = ScriptedModel(
         [
@@ -390,7 +460,7 @@ def test_agent_stops_before_executing_tool_from_fifth_model_call(
                 tool_calls=(
                     ToolCall(
                         id=f"call-{index}",
-                        name="get_order",
+                        name=recording_tool.definition.name,
                         arguments=arguments,
                     ),
                 )
@@ -399,22 +469,30 @@ def test_agent_stops_before_executing_tool_from_fifth_model_call(
         ]
     )
 
-    with pytest.raises(AgentRunError) as exc_info:
-        Agent(model).run("Check several orders.")
+    toolset = Toolset(tools=(recording_tool,))
+
+    with pytest.raises(AgentError) as exc_info:
+        Agent(model, toolset).run("Process several values.", context=TEST_CONTEXT)
 
     assert exc_info.value.code == "model_call_limit_exceeded"
     assert len(model.requests) == 5
-    assert executed_arguments == tool_arguments[:4]
+    assert executed_values == tool_values[:4]
 
 
 def test_agent_accepts_final_text_from_fifth_model_call() -> None:
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
     tool_responses = [
         ModelResponse(
             tool_calls=(
                 ToolCall(
                     id=f"call-{index}",
-                    name="get_order",
-                    arguments={"order_id": "order-001"},
+                    name=configured_tool.definition.name,
+                    arguments={"value": f"value-{index}"},
                 ),
             )
         )
@@ -423,25 +501,39 @@ def test_agent_accepts_final_text_from_fifth_model_call() -> None:
     model = ScriptedModel(
         [
             *tool_responses,
-            ModelResponse(content="The order is still processing."),
+            ModelResponse(content="The configured values were processed."),
         ]
     )
 
-    result = Agent(model).run("Keep checking the order.")
+    result = Agent(model, toolset).run(
+        "Process the configured values.",
+        context=TEST_CONTEXT,
+    )
 
-    assert result == "The order is still processing."
+    assert result == "The configured values were processed."
     assert len(model.requests) == 5
 
 
-def test_agent_provides_get_order_definition_on_every_model_call() -> None:
+def test_agent_provides_configured_tool_definitions_on_every_model_call() -> None:
+    @tool
+    def configured_tool(
+        context: ToolContext,
+        value: str,
+    ) -> str:
+        """Return the provided example value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+    context = ToolContext(customer_id="customer-001")
+
     model = ScriptedModel(
         [
             ModelResponse(
                 tool_calls=(
                     ToolCall(
                         id="call-1",
-                        name="get_order",
-                        arguments={"order_id": "order-001"},
+                        name=configured_tool.definition.name,
+                        arguments={"value": "expected"},
                     ),
                 )
             ),
@@ -449,9 +541,12 @@ def test_agent_provides_get_order_definition_on_every_model_call() -> None:
         ]
     )
 
-    Agent(model).run("Where is order-001?")
+    Agent(model, toolset).run(
+        "Use the configured tool.",
+        context=context,
+    )
 
     assert model.received_tools == [
-        (GET_ORDER_TOOL_DEFINITION,),
-        (GET_ORDER_TOOL_DEFINITION,),
+        toolset.definitions,
+        toolset.definitions,
     ]
