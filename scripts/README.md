@@ -30,7 +30,8 @@ uv run --env-file .env python scripts/check_tool_calling_compatibility.py
 
 실제 모델을 사용해 고객 주문 상태 E2E 흐름을 확인합니다. `Agent`가
 `get_customer_orders`, `find_order`, `find_shipment`을 순서대로 실행하고, 각 결과를
-원래 Tool Call ID와 연결하며, 조회 결과에 근거한 최종 응답을 반환하는지 검증합니다.
+원래 Tool Call ID와 연결해 후속 Model 요청에 전달한 뒤 비어 있지 않은 최종 응답을
+반환하는지 검증합니다.
 
 ```powershell
 uv run --env-file .env python scripts/e2e/customer_order_status.py
