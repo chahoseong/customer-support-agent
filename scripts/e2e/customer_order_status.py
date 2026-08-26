@@ -6,12 +6,14 @@ import sys
 from collections.abc import Sequence
 from textwrap import indent
 
+from pydantic import BaseModel
+
 from customer_support_agent.agent import Agent, AgentError
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
-    ToolCall,
+    ToolCallPart,
     ToolResultPart,
 )
 from customer_support_agent.models import ChatModel, OpenAIChatModel
@@ -56,12 +58,15 @@ class RecordingChatModel(ChatModel):
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
         *,
+        output_type: type[BaseModel],
         instructions: str | None = None,
     ) -> ModelResponse:
         self.requests.append(tuple(messages))
         self.tool_definitions.append(tuple(tools))
 
-        return self._model.generate(messages, tools, instructions=instructions)
+        return self._model.generate(
+            messages, tools, output_type=output_type, instructions=instructions
+        )
 
 
 def get_required_env(name: str) -> str:
@@ -92,11 +97,12 @@ def require_customer_order_status_tool_flow(model: RecordingChatModel) -> None:
         raise RuntimeError("The model was not called.")
 
     messages = model.requests[-1]
-    tool_calls: list[ToolCall] = [
-        tool_call
+    tool_calls: list[ToolCallPart] = [
+        part
         for message in messages
         if isinstance(message, ModelResponse)
-        for tool_call in message.tool_calls
+        for part in message.parts
+        if isinstance(part, ToolCallPart)
     ]
     expected_tool_names = [name for name, _ in EXPECTED_TOOL_RESULTS]
     actual_tool_names = [tool_call.name for tool_call in tool_calls]
@@ -163,7 +169,7 @@ def main() -> int:
             )
         )
         agent = Agent(model, CUSTOMER_SUPPORT_TOOLSET)
-        answer = agent.run(
+        result = agent.run(
             "Call the available tools in exactly this order: "
             "get_customer_orders with no arguments, "
             f"find_order for {ORDER_ID}, and then find_shipment for {ORDER_ID}. "
@@ -176,7 +182,6 @@ def main() -> int:
 
         require_customer_support_tool_definitions(model)
         require_customer_order_status_tool_flow(model)
-        require_non_blank_final_answer(answer)
     except AgentError as error:
         print(f"FAIL: {error.code}", file=sys.stderr)
         return 1
@@ -187,7 +192,7 @@ def main() -> int:
     print("PASS: Customer order status E2E verification succeeded.")
     print(f"Customer ID: {CUSTOMER_ID}")
     print("Final answer:")
-    print(indent(answer, "  "))
+    print(indent(result.message, "  "))
 
     return 0
 

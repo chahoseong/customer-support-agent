@@ -1,13 +1,15 @@
 from collections.abc import Sequence
 
 import pytest
+from pydantic import BaseModel
 
-from customer_support_agent.agent import Agent, AgentError
+from customer_support_agent.agent import Agent, AgentError, AgentResult
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
-    ToolCall,
+    StructuredOutputPart,
+    ToolCallPart,
     UserPromptPart,
 )
 from customer_support_agent.models import ChatModel
@@ -19,27 +21,35 @@ EMPTY_TOOLSET = Toolset(tools=())
 TEST_CONTEXT = ToolContext(customer_id="customer-001")
 
 
-def test_agent_returns_final_text_without_tool_calls() -> None:
+def test_agent_returns_agent_result_without_tool_calls() -> None:
+    expected_result = AgentResult(
+        message="Your order is being processed.",
+    )
+
     model = ScriptedModel(
         [
-            ModelResponse(content="Your order is being processed."),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
 
-    agent = Agent(model, EMPTY_TOOLSET)
+    result = Agent(model, EMPTY_TOOLSET).run(
+        "Where is my order?",
+        context=TEST_CONTEXT,
+    )
 
-    result = agent.run("Where is my order?", context=TEST_CONTEXT)
-
-    assert result == "Your order is being processed."
+    assert result == expected_result
 
 
 def test_agent_starts_each_run_with_new_message_history() -> None:
     first_request = ModelRequest(parts=(UserPromptPart(content="First request"),))
     second_request = ModelRequest(parts=(UserPromptPart(content="Second request"),))
+    first_expected_result = AgentResult(message="First response")
+    second_expected_result = AgentResult(message="Second response")
+
     model = ScriptedModel(
         [
-            ModelResponse(content="First response"),
-            ModelResponse(content="Second response"),
+            ModelResponse(parts=(StructuredOutputPart(output=first_expected_result),)),
+            ModelResponse(parts=(StructuredOutputPart(output=second_expected_result),)),
         ]
     )
     agent = Agent(model, EMPTY_TOOLSET)
@@ -47,30 +57,54 @@ def test_agent_starts_each_run_with_new_message_history() -> None:
     first_result = agent.run("First request", context=TEST_CONTEXT)
     second_result = agent.run("Second request", context=TEST_CONTEXT)
 
-    assert first_result == "First response"
-    assert second_result == "Second response"
+    assert first_result == first_expected_result
+    assert second_result == second_expected_result
     assert model.requests == [
         (first_request,),
         (second_request,),
     ]
 
 
+class UnexpectedOutput(BaseModel):
+    value: str
+
+
 @pytest.mark.parametrize(
-    "content",
+    "response",
     [
-        None,
-        "",
-        " \n\t ",
+        pytest.param(
+            ModelResponse(),
+            id="without-parts",
+        ),
+        pytest.param(
+            ModelResponse(
+                parts=(
+                    StructuredOutputPart(
+                        output=AgentResult(message="First result"),
+                    ),
+                    StructuredOutputPart(
+                        output=AgentResult(message="Second result"),
+                    ),
+                )
+            ),
+            id="multiple-agent-results",
+        ),
+        pytest.param(
+            ModelResponse(
+                parts=(
+                    StructuredOutputPart(
+                        output=UnexpectedOutput(value="unexpected"),
+                    ),
+                )
+            ),
+            id="unexpected-output-type",
+        ),
     ],
 )
-def test_agent_raises_invalid_model_response_for_content_without_displayable_text(
-    content: str | None,
+def test_agent_raises_invalid_model_response_without_exactly_one_agent_result(
+    response: ModelResponse,
 ) -> None:
-    model = ScriptedModel(
-        [
-            ModelResponse(content=content),
-        ]
-    )
+    model = ScriptedModel([response])
 
     with pytest.raises(AgentError) as exc_info:
         Agent(model, EMPTY_TOOLSET).run(
@@ -90,6 +124,7 @@ def test_agent_wraps_model_failure_without_exposing_details() -> None:
             _messages: Sequence[ModelMessage],
             _tools: Sequence[ToolDefinition],
             *,
+            output_type: type[BaseModel],
             instructions: str | None = None,
         ) -> ModelResponse:
             raise model_error
@@ -119,8 +154,8 @@ def test_agent_stops_before_executing_tool_from_fifth_model_call() -> None:
     model = ScriptedModel(
         [
             ModelResponse(
-                tool_calls=(
-                    ToolCall(
+                parts=(
+                    ToolCallPart(
                         id=f"call-{index}",
                         name=recording_tool.definition.name,
                         arguments=arguments,
@@ -141,17 +176,18 @@ def test_agent_stops_before_executing_tool_from_fifth_model_call() -> None:
     assert executed_values == tool_values[:4]
 
 
-def test_agent_accepts_final_text_from_fifth_model_call() -> None:
+def test_agent_accepts_agent_result_from_fifth_model_call() -> None:
     @tool
     def configured_tool(value: str) -> str:
         """Return the configured value."""
         return value
 
     toolset = Toolset(tools=(configured_tool,))
+
     tool_responses = [
         ModelResponse(
-            tool_calls=(
-                ToolCall(
+            parts=(
+                ToolCallPart(
                     id=f"call-{index}",
                     name=configured_tool.definition.name,
                     arguments={"value": f"value-{index}"},
@@ -160,10 +196,15 @@ def test_agent_accepts_final_text_from_fifth_model_call() -> None:
         )
         for index in range(1, 5)
     ]
+
+    expected_result = AgentResult(
+        message="The configured values were processed.",
+    )
+
     model = ScriptedModel(
         [
             *tool_responses,
-            ModelResponse(content="The configured values were processed."),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
 
@@ -172,7 +213,7 @@ def test_agent_accepts_final_text_from_fifth_model_call() -> None:
         context=TEST_CONTEXT,
     )
 
-    assert result == "The configured values were processed."
+    assert result == expected_result
     assert len(model.requests) == 5
 
 
@@ -187,8 +228,8 @@ def test_agent_provides_configured_instructions_on_every_model_call() -> None:
     model = ScriptedModel(
         [
             ModelResponse(
-                tool_calls=(
-                    ToolCall(
+                parts=(
+                    ToolCallPart(
                         id="call-1",
                         name=configured_tool.definition.name,
                         arguments={"value": "expected"},
@@ -196,7 +237,13 @@ def test_agent_provides_configured_instructions_on_every_model_call() -> None:
                 )
             ),
             ModelResponse(
-                content="The configured value was processed.",
+                parts=(
+                    StructuredOutputPart(
+                        output=AgentResult(
+                            message="The configured value was processed.",
+                        )
+                    ),
+                )
             ),
         ]
     )
@@ -215,4 +262,49 @@ def test_agent_provides_configured_instructions_on_every_model_call() -> None:
     assert model.received_instructions == [
         instructions,
         instructions,
+    ]
+
+
+def test_agent_provides_agent_result_type_on_every_model_call() -> None:
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                parts=(
+                    ToolCallPart(
+                        id="call-1",
+                        name=configured_tool.definition.name,
+                        arguments={"value": "expected"},
+                    ),
+                )
+            ),
+            ModelResponse(
+                parts=(
+                    StructuredOutputPart(
+                        output=AgentResult(
+                            message="The configured value was processed.",
+                        )
+                    ),
+                )
+            ),
+        ]
+    )
+
+    Agent(
+        model,
+        toolset,
+    ).run(
+        "Process the configured value.",
+        context=TEST_CONTEXT,
+    )
+
+    assert model.received_output_types == [
+        AgentResult,
+        AgentResult,
     ]

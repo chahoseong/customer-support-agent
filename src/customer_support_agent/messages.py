@@ -1,11 +1,6 @@
 from dataclasses import dataclass
 
-
-@dataclass
-class ToolCall:
-    id: str
-    name: str
-    arguments: object
+from pydantic import BaseModel
 
 
 @dataclass
@@ -28,9 +23,23 @@ class ModelRequest:
 
 
 @dataclass
+class ToolCallPart:
+    id: str
+    name: str
+    arguments: object
+
+
+@dataclass
+class StructuredOutputPart:
+    output: BaseModel
+
+
+type ModelResponsePart = ToolCallPart | StructuredOutputPart
+
+
+@dataclass
 class ModelResponse:
-    content: str | None = None
-    tool_calls: tuple[ToolCall, ...] = ()
+    parts: tuple[ModelResponsePart, ...] = ()
 
 
 type ModelMessage = ModelRequest | ModelResponse
