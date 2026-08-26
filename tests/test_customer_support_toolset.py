@@ -5,6 +5,7 @@ from customer_support_agent.tools.order import (
     find_order,
     get_customer_orders,
 )
+from customer_support_agent.tools.policy import get_cancellation_policy
 from customer_support_agent.tools.shipment import find_shipment
 
 
@@ -13,4 +14,5 @@ def test_customer_support_toolset_exposes_configured_tool_definitions() -> None:
         get_customer_orders.definition,
         find_order.definition,
         find_shipment.definition,
+        get_cancellation_policy.definition,
     )
