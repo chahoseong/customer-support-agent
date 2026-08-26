@@ -81,6 +81,34 @@ Avoid:
 
 These rules are based on [pytest's test discovery conventions](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery), [PEP 8](https://peps.python.org/pep-0008/#function-and-variable-names), the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.16-naming), [*Software Engineering at Google*](https://abseil.io/resources/swe-book/html/ch12.html#name-tests-after-the-behavior-being-tested), and [Microsoft unit testing best practices](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-best-practices#follow-test-naming-standards).
 
+## Pull Requests
+
+Pull requests are durable records of completed implementation outcomes. Create
+them after implementation, verification, and required review rather than using
+them as substitutes for issue specifications or design discussions.
+
+- Treat the linked issue as the record of requirements and pre-implementation
+  decisions. Use the pull request to record what was actually implemented.
+- Create a pull request only after its acceptance criteria have been checked,
+  all applicable quality gates have passed, required review findings have been
+  resolved, and the branch contains reviewable commits.
+- Write the pull request so that the purpose and final outcome can be understood
+  without reconstructing the implementation process.
+- Include the change purpose, implemented outcome, verification results, and the
+  closing issue reference. Include final design decisions and intentionally
+  excluded scope when they add context that is not obvious from the diff.
+- Record material differences from the linked issue and explain why the
+  implementation changed.
+- Report only tests, checks, and reviews that were actually completed. Prefer
+  concise results over complete command output.
+- Do not duplicate the issue body, enumerate files already visible in the diff,
+  or include the full RED-GREEN development history.
+- Keep the description proportional to the context needed to understand the
+  change, not to the number of modified lines.
+- If the branch changes after the pull request is created, update the description
+  and verification results so they continue to describe the version being
+  merged.
+
 ## Commands
 
 ### Linting and Formatting
