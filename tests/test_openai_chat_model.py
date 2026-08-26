@@ -1,17 +1,26 @@
 from unittest.mock import Mock
 
 import pytest
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ParsedChatCompletion
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from customer_support_agent.messages import (
     ModelRequest,
     ModelResponse,
-    ToolCall,
+    StructuredOutputPart,
+    ToolCallPart,
     ToolResultPart,
     UserPromptPart,
 )
 from customer_support_agent.models.openai import OpenAIChatModel
 from customer_support_agent.tools.tool import ToolDefinition
+
+
+class ExampleOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str
+
 
 EXAMPLE_TOOL_DEFINITION = ToolDefinition(
     name="example_tool",
@@ -29,10 +38,14 @@ EXAMPLE_TOOL_DEFINITION = ToolDefinition(
 )
 
 
-def test_generate_converts_text_request_and_response(
+def test_generate_converts_structured_output_request_and_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sdk_response = ChatCompletion.model_validate(
+    expected_output = ExampleOutput(
+        message="The example value was processed.",
+    )
+
+    sdk_response = ParsedChatCompletion[ExampleOutput].model_validate(
         {
             "id": "completion-1",
             "choices": [
@@ -40,8 +53,9 @@ def test_generate_converts_text_request_and_response(
                     "finish_reason": "stop",
                     "index": 0,
                     "message": {
-                        "content": "The example value was processed.",
+                        "content": expected_output.model_dump_json(),
                         "role": "assistant",
+                        "parsed": expected_output,
                     },
                 }
             ],
@@ -52,7 +66,8 @@ def test_generate_converts_text_request_and_response(
     )
 
     client = Mock()
-    client.chat.completions.create.return_value = sdk_response
+    client.chat.completions.parse.return_value = sdk_response
+
     openai_constructor = Mock(return_value=client)
     monkeypatch.setattr(
         "customer_support_agent.models.openai.OpenAI",
@@ -68,13 +83,15 @@ def test_generate_converts_text_request_and_response(
     response = model.generate(
         (ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),),
         (EXAMPLE_TOOL_DEFINITION,),
+        output_type=ExampleOutput,
     )
 
     openai_constructor.assert_called_once_with(
         base_url="http://model-server.test/v1",
         api_key="test-api-key",
     )
-    client.chat.completions.create.assert_called_once_with(
+
+    client.chat.completions.parse.assert_called_once_with(
         model="test-model",
         messages=[
             {
@@ -89,19 +106,23 @@ def test_generate_converts_text_request_and_response(
                     "name": EXAMPLE_TOOL_DEFINITION.name,
                     "description": EXAMPLE_TOOL_DEFINITION.description,
                     "parameters": EXAMPLE_TOOL_DEFINITION.parameters,
+                    "strict": True,
                 },
             }
         ],
+        response_format=ExampleOutput,
         parallel_tool_calls=False,
     )
 
-    assert response == ModelResponse(content="The example value was processed.")
+    assert response == ModelResponse(
+        parts=(StructuredOutputPart(output=expected_output),)
+    )
 
 
 def test_generate_converts_tool_call_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sdk_response = ChatCompletion.model_validate(
+    sdk_response = ParsedChatCompletion[ExampleOutput].model_validate(
         {
             "id": "completion-1",
             "choices": [
@@ -131,7 +152,7 @@ def test_generate_converts_tool_call_response(
     )
 
     client = Mock()
-    client.chat.completions.create.return_value = sdk_response
+    client.chat.completions.parse.return_value = sdk_response
 
     monkeypatch.setattr(
         "customer_support_agent.models.openai.OpenAI",
@@ -147,11 +168,12 @@ def test_generate_converts_tool_call_response(
     response = model.generate(
         (ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),),
         (EXAMPLE_TOOL_DEFINITION,),
+        output_type=ExampleOutput,
     )
 
     assert response == ModelResponse(
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-1",
                 name=EXAMPLE_TOOL_DEFINITION.name,
                 arguments={"value": "expected"},
@@ -163,7 +185,11 @@ def test_generate_converts_tool_call_response(
 def test_generate_converts_tool_call_history_and_tool_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sdk_response = ChatCompletion.model_validate(
+    expected_output = ExampleOutput(
+        message="The example value was processed.",
+    )
+
+    sdk_response = ParsedChatCompletion[ExampleOutput].model_validate(
         {
             "id": "completion-2",
             "choices": [
@@ -171,8 +197,9 @@ def test_generate_converts_tool_call_history_and_tool_result(
                     "finish_reason": "stop",
                     "index": 0,
                     "message": {
-                        "content": "The example value was processed.",
+                        "content": expected_output.model_dump_json(),
                         "role": "assistant",
+                        "parsed": expected_output,
                     },
                 }
             ],
@@ -182,11 +209,13 @@ def test_generate_converts_tool_call_history_and_tool_result(
         }
     )
     client = Mock()
-    client.chat.completions.create.return_value = sdk_response
+    client.chat.completions.parse.return_value = sdk_response
+
     monkeypatch.setattr(
         "customer_support_agent.models.openai.OpenAI",
         Mock(return_value=client),
     )
+
     model = OpenAIChatModel(
         base_url="http://model-server.test/v1",
         model_name="test-model",
@@ -197,8 +226,8 @@ def test_generate_converts_tool_call_history_and_tool_result(
         (
             ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),
             ModelResponse(
-                tool_calls=(
-                    ToolCall(
+                parts=(
+                    ToolCallPart(
                         id="call-1",
                         name=EXAMPLE_TOOL_DEFINITION.name,
                         arguments={"value": "expected"},
@@ -215,9 +244,10 @@ def test_generate_converts_tool_call_history_and_tool_result(
             ),
         ),
         (EXAMPLE_TOOL_DEFINITION,),
+        output_type=ExampleOutput,
     )
 
-    sent_messages = client.chat.completions.create.call_args.kwargs["messages"]
+    sent_messages = client.chat.completions.parse.call_args.kwargs["messages"]
     assert sent_messages == [
         {
             "role": "user",
@@ -248,7 +278,11 @@ def test_generate_converts_tool_call_history_and_tool_result(
 def test_generate_sends_instructions_as_system_message_before_conversation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sdk_response = ChatCompletion.model_validate(
+    expected_output = ExampleOutput(
+        message="The example value was processed.",
+    )
+
+    sdk_response = ParsedChatCompletion[ExampleOutput].model_validate(
         {
             "id": "completion-1",
             "choices": [
@@ -256,8 +290,9 @@ def test_generate_sends_instructions_as_system_message_before_conversation(
                     "finish_reason": "stop",
                     "index": 0,
                     "message": {
-                        "content": "The example value was processed.",
+                        "content": expected_output.model_dump_json(),
                         "role": "assistant",
+                        "parsed": expected_output,
                     },
                 }
             ],
@@ -268,7 +303,7 @@ def test_generate_sends_instructions_as_system_message_before_conversation(
     )
 
     client = Mock()
-    client.chat.completions.create.return_value = sdk_response
+    client.chat.completions.parse.return_value = sdk_response
 
     monkeypatch.setattr(
         "customer_support_agent.models.openai.OpenAI",
@@ -286,10 +321,11 @@ def test_generate_sends_instructions_as_system_message_before_conversation(
     model.generate(
         (ModelRequest(parts=(UserPromptPart(content="Where is my order?"),)),),
         (),
+        output_type=ExampleOutput,
         instructions=instructions,
     )
 
-    sent_messages = client.chat.completions.create.call_args.kwargs["messages"]
+    sent_messages = client.chat.completions.parse.call_args.kwargs["messages"]
 
     assert sent_messages == [
         {
@@ -301,3 +337,79 @@ def test_generate_sends_instructions_as_system_message_before_conversation(
             "content": "Where is my order?",
         },
     ]
+
+
+def test_generate_returns_response_without_output_when_model_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk_response = ParsedChatCompletion[ExampleOutput].model_validate(
+        {
+            "id": "completion-1",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": None,
+                        "role": "assistant",
+                        "parsed": None,
+                        "refusal": "I cannot complete this request.",
+                    },
+                }
+            ],
+            "created": 0,
+            "model": "test-model",
+            "object": "chat.completion",
+        }
+    )
+
+    client = Mock()
+    client.chat.completions.parse.return_value = sdk_response
+
+    monkeypatch.setattr(
+        "customer_support_agent.models.openai.OpenAI",
+        Mock(return_value=client),
+    )
+
+    model = OpenAIChatModel(
+        base_url="http://model-server.test/v1",
+        model_name="test-model",
+        api_key="test-api-key",
+    )
+
+    response = model.generate(
+        (ModelRequest(parts=(UserPromptPart(content="Where is my order?"),)),),
+        (),
+        output_type=ExampleOutput,
+    )
+
+    assert response == ModelResponse()
+
+
+def test_generate_returns_response_without_output_when_structured_output_validation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        ExampleOutput.model_validate({})
+
+    client = Mock()
+    client.chat.completions.parse.side_effect = exc_info.value
+
+    monkeypatch.setattr(
+        "customer_support_agent.models.openai.OpenAI",
+        Mock(return_value=client),
+    )
+
+    model = OpenAIChatModel(
+        base_url="http://model-server.test/v1",
+        model_name="test-model",
+        api_key="test-api-key",
+    )
+
+    response = model.generate(
+        (ModelRequest(parts=(UserPromptPart(content="Where is my order?"),)),),
+        (),
+        output_type=ExampleOutput,
+    )
+
+    assert response == ModelResponse()

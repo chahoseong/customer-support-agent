@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
+    StructuredOutputPart,
+    ToolCallPart,
     ToolResultPart,
     UserPromptPart,
 )
@@ -24,7 +26,7 @@ type AgentErrorCode = Literal[
 
 
 _AGENT_ERROR_MESSAGES: dict[AgentErrorCode, str] = {
-    "invalid_model_response": "Model response has no displayable content.",
+    "invalid_model_response": "Model response has no valid AgentResult.",
     "model_call_failed": "Model call failed.",
     "model_call_limit_exceeded": "Model call limit exceeded.",
 }
@@ -60,7 +62,7 @@ class Agent:
         self._toolset = toolset
         self._instructions = instructions
 
-    def run(self, user_message: str, *, context: ToolContext) -> str:
+    def run(self, user_message: str, *, context: ToolContext) -> AgentResult:
         messages: list[ModelMessage] = [
             ModelRequest(parts=(UserPromptPart(content=user_message),))
         ]
@@ -80,6 +82,7 @@ class Agent:
                     messages,
                     self._toolset.definitions,
                     instructions=self._instructions,
+                    output_type=AgentResult,
                 )
             except Exception as error:
                 logger.error(
@@ -88,7 +91,11 @@ class Agent:
 
                 raise AgentError("model_call_failed") from error
 
-            if response.tool_calls:
+            tool_calls = tuple(
+                part for part in response.parts if isinstance(part, ToolCallPart)
+            )
+
+            if tool_calls:
                 if model_call_count >= _MAX_MODEL_CALLS:
                     logger.error(
                         "The run stopped because another model call would exceed "
@@ -101,7 +108,7 @@ class Agent:
                 messages.append(response)
                 tool_results: list[ToolResultPart] = []
 
-                for tool_call in response.tool_calls:
+                for tool_call in tool_calls:
                     logger.info(
                         "The model requested the %r tool.",
                         tool_call.name,
@@ -136,13 +143,17 @@ class Agent:
 
                 continue
 
-            if response.content is None or not response.content.strip():
-                logger.error(
-                    "The run stopped because the model returned no displayable content."
-                )
+            if len(response.parts) == 1:
+                part = response.parts[0]
 
-                raise AgentError("invalid_model_response")
+                if isinstance(part, StructuredOutputPart) and isinstance(
+                    part.output, AgentResult
+                ):
+                    logger.info("The run finished with the model's final response.")
+                    return part.output
 
-            logger.info("The run finished with the model's final response.")
+            logger.error(
+                "The run stopped because the model returned no valid AgentResult."
+            )
 
-            return response.content
+            raise AgentError("invalid_model_response")

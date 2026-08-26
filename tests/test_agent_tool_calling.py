@@ -1,8 +1,9 @@
-from customer_support_agent.agent import Agent
+from customer_support_agent.agent import Agent, AgentResult
 from customer_support_agent.messages import (
     ModelRequest,
     ModelResponse,
-    ToolCall,
+    StructuredOutputPart,
+    ToolCallPart,
     ToolResultPart,
     UserPromptPart,
 )
@@ -14,7 +15,7 @@ EMPTY_TOOLSET = Toolset(tools=())
 TEST_CONTEXT = ToolContext(customer_id="customer-001")
 
 
-def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
+def test_agent_sends_tool_result_to_model_and_returns_agent_result() -> None:
     @tool
     def configured_tool(
         context: ToolContext,
@@ -33,8 +34,8 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
         parts=(UserPromptPart(content="Use the configured tool."),)
     )
     tool_call_response = ModelResponse(
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-1",
                 name=configured_tool.definition.name,
                 arguments={"value": "expected"},
@@ -52,7 +53,15 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
             ),
         )
     )
-    final_response = ModelResponse(content="The configured value is expected.")
+
+    expected_result = AgentResult(
+        message="The configured value is expected.",
+    )
+
+    final_response = ModelResponse(
+        parts=(StructuredOutputPart(output=expected_result),)
+    )
+
     model = ScriptedModel(
         [
             tool_call_response,
@@ -60,11 +69,12 @@ def test_agent_sends_tool_result_to_model_and_returns_final_text() -> None:
         ]
     )
 
-    agent = Agent(model, toolset)
+    result = Agent(model, toolset).run(
+        "Use the configured tool.",
+        context=context,
+    )
 
-    result = agent.run("Use the configured tool.", context=context)
-
-    assert result == "The configured value is expected."
+    assert result == expected_result
     assert model.requests == [
         (user_request,),
         (
@@ -109,8 +119,8 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
         )
     )
     first_tool_call_response = ModelResponse(
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-1",
                 name=first_tool.definition.name,
                 arguments={"first_value": "first"},
@@ -129,8 +139,8 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
         )
     )
     second_tool_call_response = ModelResponse(
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-2",
                 name=second_tool.definition.name,
                 arguments={"second_value": "second"},
@@ -148,8 +158,12 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
             ),
         )
     )
+
+    expected_result = AgentResult(
+        message="The first and second values were processed.",
+    )
     final_response = ModelResponse(
-        content="The first and second values were processed."
+        parts=(StructuredOutputPart(output=expected_result),)
     )
 
     model = ScriptedModel(
@@ -164,7 +178,7 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
         "Process the first and second values.", context=context
     )
 
-    assert result == "The first and second values were processed."
+    assert result == expected_result
     assert model.requests == [
         (user_request,),
         (
@@ -182,7 +196,9 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
     ]
 
 
-def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
+def test_agent_prioritizes_tool_calls_when_response_also_contains_agent_result() -> (
+    None
+):
     @tool
     def configured_tool(
         context: ToolContext,
@@ -200,14 +216,18 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
     user_request = ModelRequest(parts=(UserPromptPart(content=user_message),))
 
     tool_call_response = ModelResponse(
-        content="The configured value is available.",
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-1",
                 name=configured_tool.definition.name,
                 arguments={"value": "expected"},
             ),
-        ),
+            StructuredOutputPart(
+                output=AgentResult(
+                    message="The configured value is available.",
+                )
+            ),
+        )
     )
     tool_result_request = ModelRequest(
         parts=(
@@ -220,16 +240,25 @@ def test_agent_prioritizes_tool_calls_when_response_also_has_content() -> None:
             ),
         )
     )
+
+    expected_result = AgentResult(
+        message="The configured value is expected.",
+    )
+
+    final_response = ModelResponse(
+        parts=(StructuredOutputPart(output=expected_result),)
+    )
+
     model = ScriptedModel(
         [
             tool_call_response,
-            ModelResponse(content="The configured value is expected."),
+            final_response,
         ]
     )
 
     result = Agent(model, toolset).run(user_message, context=TEST_CONTEXT)
 
-    assert result == "The configured value is expected."
+    assert result == expected_result
     assert model.requests == [
         (user_request,),
         (
@@ -245,8 +274,8 @@ def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
     user_request = ModelRequest(parts=(UserPromptPart(content=user_message),))
 
     tool_call_response = ModelResponse(
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-1",
                 name="unknown_tool",
                 arguments={},
@@ -270,16 +299,20 @@ def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
         )
     )
 
+    expected_result = AgentResult(
+        message="I cannot use that tool.",
+    )
+
     model = ScriptedModel(
         [
             tool_call_response,
-            ModelResponse(content="I cannot use that tool."),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
 
     result = Agent(model, EMPTY_TOOLSET).run(user_message, context=TEST_CONTEXT)
 
-    assert result == "I cannot use that tool."
+    assert result == expected_result
     assert model.requests == [
         (user_request,),
         (
@@ -304,8 +337,8 @@ def test_agent_returns_tool_execution_failed_error_to_model_and_continues() -> N
     user_request = ModelRequest(parts=(UserPromptPart(content=user_message),))
 
     tool_call_response = ModelResponse(
-        tool_calls=(
-            ToolCall(
+        parts=(
+            ToolCallPart(
                 id="call-1",
                 name=broken_tool.definition.name,
                 arguments={"value": "expected"},
@@ -328,16 +361,20 @@ def test_agent_returns_tool_execution_failed_error_to_model_and_continues() -> N
         )
     )
 
+    expected_result = AgentResult(
+        message="I could not complete the action.",
+    )
+
     model = ScriptedModel(
         [
             tool_call_response,
-            ModelResponse(content="I could not complete the action."),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
 
     result = Agent(model, toolset).run(user_message, context=TEST_CONTEXT)
 
-    assert result == "I could not complete the action."
+    assert result == expected_result
     assert model.requests == [
         (user_request,),
         (
@@ -363,15 +400,23 @@ def test_agent_provides_configured_tool_definitions_on_every_model_call() -> Non
     model = ScriptedModel(
         [
             ModelResponse(
-                tool_calls=(
-                    ToolCall(
+                parts=(
+                    ToolCallPart(
                         id="call-1",
                         name=configured_tool.definition.name,
                         arguments={"value": "expected"},
                     ),
                 )
             ),
-            ModelResponse(content="The order is processing."),
+            ModelResponse(
+                parts=(
+                    StructuredOutputPart(
+                        output=AgentResult(
+                            message="The order is processing.",
+                        )
+                    ),
+                )
+            ),
         ]
     )
 

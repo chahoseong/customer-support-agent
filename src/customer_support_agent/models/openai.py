@@ -4,15 +4,17 @@ from collections.abc import Sequence
 from openai import OpenAI
 from openai.types.chat import (
     ChatCompletionFunctionToolParam,
-    ChatCompletionMessage,
     ChatCompletionMessageFunctionToolCallParam,
     ChatCompletionMessageParam,
+    ParsedChatCompletionMessage,
 )
+from pydantic import BaseModel, ValidationError
 
 from customer_support_agent.messages import (
     ModelMessage,
     ModelResponse,
-    ToolCall,
+    StructuredOutputPart,
+    ToolCallPart,
     UserPromptPart,
 )
 from customer_support_agent.models.base import ChatModel
@@ -36,6 +38,10 @@ def _to_sdk_messages(
 
     for message in messages:
         if isinstance(message, ModelResponse):
+            tool_calls = tuple(
+                part for part in message.parts if isinstance(part, ToolCallPart)
+            )
+
             sdk_tool_calls: list[ChatCompletionMessageFunctionToolCallParam] = [
                 {
                     "id": tool_call.id,
@@ -45,12 +51,12 @@ def _to_sdk_messages(
                         "arguments": json.dumps(tool_call.arguments),
                     },
                 }
-                for tool_call in message.tool_calls
+                for tool_call in tool_calls
             ]
             sdk_messages.append(
                 {
                     "role": "assistant",
-                    "content": message.content,
+                    "content": None,
                     "tool_calls": sdk_tool_calls,
                 }
             )
@@ -86,6 +92,7 @@ def _to_sdk_tools(
                 "name": tool.name,
                 "description": tool.description,
                 "parameters": tool.parameters,
+                "strict": True,
             },
         }
         for tool in tools
@@ -93,26 +100,31 @@ def _to_sdk_tools(
 
 
 def _to_model_response(
-    response_message: ChatCompletionMessage,
+    response_message: ParsedChatCompletionMessage[BaseModel],
 ) -> ModelResponse:
-    tool_calls: list[ToolCall] = []
+    tool_call_parts: list[ToolCallPart] = []
 
     for sdk_tool_call in response_message.tool_calls or []:
         if sdk_tool_call.type != "function":
             raise NotImplementedError("Custom tool calls are not supported.")
 
-        tool_calls.append(
-            ToolCall(
+        tool_call_parts.append(
+            ToolCallPart(
                 id=sdk_tool_call.id,
                 name=sdk_tool_call.function.name,
                 arguments=json.loads(sdk_tool_call.function.arguments),
             )
         )
 
-    return ModelResponse(
-        content=response_message.content,
-        tool_calls=tuple(tool_calls),
-    )
+    if tool_call_parts:
+        return ModelResponse(parts=tuple(tool_call_parts))
+
+    if response_message.parsed is not None:
+        return ModelResponse(
+            parts=(StructuredOutputPart(output=response_message.parsed),)
+        )
+
+    return ModelResponse()
 
 
 class OpenAIChatModel(ChatModel):
@@ -134,13 +146,18 @@ class OpenAIChatModel(ChatModel):
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
         *,
+        output_type: type[BaseModel],
         instructions: str | None = None,
     ) -> ModelResponse:
-        completion = self._client.chat.completions.create(
-            model=self._model_name,
-            messages=_to_sdk_messages(messages, instructions=instructions),
-            tools=_to_sdk_tools(tools),
-            parallel_tool_calls=False,
-        )
+        try:
+            completion = self._client.chat.completions.parse(
+                model=self._model_name,
+                messages=_to_sdk_messages(messages, instructions=instructions),
+                tools=_to_sdk_tools(tools),
+                response_format=output_type,
+                parallel_tool_calls=False,
+            )
+        except ValidationError:
+            return ModelResponse()
 
         return _to_model_response(completion.choices[0].message)
