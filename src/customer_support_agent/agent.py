@@ -1,5 +1,7 @@
 import logging
-from typing import Literal
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from customer_support_agent.messages import (
     ModelMessage,
@@ -26,6 +28,22 @@ _AGENT_ERROR_MESSAGES: dict[AgentErrorCode, str] = {
     "model_call_failed": "Model call failed.",
     "model_call_limit_exceeded": "Model call limit exceeded.",
 }
+
+
+class AgentResult(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        strict=True,
+    )
+
+    message: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=1,
+        ),
+    ]
 
 
 class AgentError(RuntimeError):
