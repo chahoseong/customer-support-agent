@@ -136,7 +136,12 @@ def find_order(context: ToolContext, order_id: str) -> FindOrderResult:
 
 ```python
 CUSTOMER_SUPPORT_TOOLSET = Toolset(
-    tools=(get_customer_orders, find_order, find_shipment),
+    tools=(
+        get_customer_orders,
+        find_order,
+        find_shipment,
+        get_cancellation_policy,
+    ),
 )
 ```
 
