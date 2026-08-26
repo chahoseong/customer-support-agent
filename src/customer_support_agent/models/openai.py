@@ -21,8 +21,18 @@ from customer_support_agent.tools import ToolDefinition
 
 def _to_sdk_messages(
     messages: Sequence[ModelMessage],
+    *,
+    instructions: str | None = None,
 ) -> list[ChatCompletionMessageParam]:
     sdk_messages: list[ChatCompletionMessageParam] = []
+
+    if instructions is not None:
+        sdk_messages.append(
+            {
+                "role": "system",
+                "content": instructions,
+            }
+        )
 
     for message in messages:
         if isinstance(message, ModelResponse):
@@ -123,10 +133,12 @@ class OpenAIChatModel(ChatModel):
         self,
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
+        *,
+        instructions: str | None = None,
     ) -> ModelResponse:
         completion = self._client.chat.completions.create(
             model=self._model_name,
-            messages=_to_sdk_messages(messages),
+            messages=_to_sdk_messages(messages, instructions=instructions),
             tools=_to_sdk_tools(tools),
             parallel_tool_calls=False,
         )

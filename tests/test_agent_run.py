@@ -89,6 +89,8 @@ def test_agent_wraps_model_failure_without_exposing_details() -> None:
             self,
             _messages: Sequence[ModelMessage],
             _tools: Sequence[ToolDefinition],
+            *,
+            instructions: str | None = None,
         ) -> ModelResponse:
             raise model_error
 
@@ -172,3 +174,45 @@ def test_agent_accepts_final_text_from_fifth_model_call() -> None:
 
     assert result == "The configured values were processed."
     assert len(model.requests) == 5
+
+
+def test_agent_provides_configured_instructions_on_every_model_call() -> None:
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="call-1",
+                        name=configured_tool.definition.name,
+                        arguments={"value": "expected"},
+                    ),
+                )
+            ),
+            ModelResponse(
+                content="The configured value was processed.",
+            ),
+        ]
+    )
+
+    instructions = "Follow the configured instructions."
+
+    Agent(
+        model,
+        toolset,
+        instructions=instructions,
+    ).run(
+        "Process the configured value.",
+        context=TEST_CONTEXT,
+    )
+
+    assert model.received_instructions == [
+        instructions,
+        instructions,
+    ]

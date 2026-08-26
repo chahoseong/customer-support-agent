@@ -243,3 +243,61 @@ def test_generate_converts_tool_call_history_and_tool_result(
             "content": '{"value": "expected"}',
         },
     ]
+
+
+def test_generate_sends_instructions_as_system_message_before_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk_response = ChatCompletion.model_validate(
+        {
+            "id": "completion-1",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": "The example value was processed.",
+                        "role": "assistant",
+                    },
+                }
+            ],
+            "created": 0,
+            "model": "test-model",
+            "object": "chat.completion",
+        }
+    )
+
+    client = Mock()
+    client.chat.completions.create.return_value = sdk_response
+
+    monkeypatch.setattr(
+        "customer_support_agent.models.openai.OpenAI",
+        Mock(return_value=client),
+    )
+
+    model = OpenAIChatModel(
+        base_url="http://model-server.test/v1",
+        model_name="test-model",
+        api_key="test-api-key",
+    )
+
+    instructions = "Follow the customer support instructions."
+
+    model.generate(
+        (ModelRequest(parts=(UserPromptPart(content="Where is my order?"),)),),
+        (),
+        instructions=instructions,
+    )
+
+    sent_messages = client.chat.completions.create.call_args.kwargs["messages"]
+
+    assert sent_messages == [
+        {
+            "role": "system",
+            "content": instructions,
+        },
+        {
+            "role": "user",
+            "content": "Where is my order?",
+        },
+    ]

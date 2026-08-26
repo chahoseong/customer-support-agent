@@ -53,9 +53,12 @@ class AgentError(RuntimeError):
 
 
 class Agent:
-    def __init__(self, model: ChatModel, toolset: Toolset) -> None:
+    def __init__(
+        self, model: ChatModel, toolset: Toolset, *, instructions: str | None = None
+    ) -> None:
         self._model = model
         self._toolset = toolset
+        self._instructions = instructions
 
     def run(self, user_message: str, *, context: ToolContext) -> str:
         messages: list[ModelMessage] = [
@@ -76,6 +79,7 @@ class Agent:
                 response = self._model.generate(
                     messages,
                     self._toolset.definitions,
+                    instructions=self._instructions,
                 )
             except Exception as error:
                 logger.error(
