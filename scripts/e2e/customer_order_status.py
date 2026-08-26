@@ -55,11 +55,13 @@ class RecordingChatModel(ChatModel):
         self,
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
+        *,
+        instructions: str | None = None,
     ) -> ModelResponse:
         self.requests.append(tuple(messages))
         self.tool_definitions.append(tuple(tools))
 
-        return self._model.generate(messages, tools)
+        return self._model.generate(messages, tools, instructions=instructions)
 
 
 def get_required_env(name: str) -> str:
