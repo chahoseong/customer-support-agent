@@ -9,6 +9,7 @@ from textwrap import indent
 from pydantic import BaseModel
 
 from customer_support_agent.agent import Agent, AgentError
+from customer_support_agent.customer_support import CUSTOMER_SUPPORT_TOOLSET
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
@@ -18,7 +19,6 @@ from customer_support_agent.messages import (
 )
 from customer_support_agent.models import ChatModel, OpenAIChatModel
 from customer_support_agent.tools import ToolContext, ToolDefinition
-from customer_support_agent.tools.customer_support import CUSTOMER_SUPPORT_TOOLSET
 
 CUSTOMER_ID = "customer-001"
 ORDER_ID = "order-002"
