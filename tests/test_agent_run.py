@@ -4,11 +4,17 @@ import pytest
 from pydantic import BaseModel
 
 from customer_support_agent.agent import Agent, AgentError, AgentResult
+from customer_support_agent.conversation import (
+    AgentMessage,
+    Conversation,
+    UserMessage,
+)
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
     StructuredOutputPart,
+    TextPart,
     ToolCallPart,
     UserPromptPart,
 )
@@ -40,9 +46,24 @@ def test_agent_returns_agent_result_without_tool_calls() -> None:
     assert result == expected_result
 
 
-def test_agent_starts_each_run_with_new_message_history() -> None:
-    first_request = ModelRequest(parts=(UserPromptPart(content="First request"),))
-    second_request = ModelRequest(parts=(UserPromptPart(content="Second request"),))
+def test_agent_uses_only_conversation_passed_to_each_run() -> None:
+    first_conversation = Conversation(
+        messages=(
+            UserMessage(content="Where is my shipped order?"),
+            AgentMessage(content="Please provide the shipped order ID."),
+        )
+    )
+
+    second_conversation = Conversation(
+        messages=(
+            UserMessage(content="Can I cancel my order?"),
+            AgentMessage(content="Please provide the order ID you want to cancel."),
+        )
+    )
+
+    first_user_message = "The order ID is order-002."
+    second_user_message = "The order ID is order-004."
+
     first_expected_result = AgentResult(message="First response")
     second_expected_result = AgentResult(message="Second response")
 
@@ -54,15 +75,88 @@ def test_agent_starts_each_run_with_new_message_history() -> None:
     )
     agent = Agent(model, EMPTY_TOOLSET)
 
-    first_result = agent.run("First request", context=TEST_CONTEXT)
-    second_result = agent.run("Second request", context=TEST_CONTEXT)
+    agent.run(
+        first_user_message,
+        context=TEST_CONTEXT,
+        conversation=first_conversation,
+    )
+    agent.run(
+        second_user_message,
+        context=TEST_CONTEXT,
+        conversation=second_conversation,
+    )
 
-    assert first_result == first_expected_result
-    assert second_result == second_expected_result
     assert model.requests == [
-        (first_request,),
-        (second_request,),
+        (
+            ModelRequest(parts=(UserPromptPart(content="Where is my shipped order?"),)),
+            ModelResponse(
+                parts=(TextPart(content="Please provide the shipped order ID."),)
+            ),
+            ModelRequest(parts=(UserPromptPart(content=first_user_message),)),
+        ),
+        (
+            ModelRequest(parts=(UserPromptPart(content="Can I cancel my order?"),)),
+            ModelResponse(
+                parts=(
+                    TextPart(content="Please provide the order ID you want to cancel."),
+                )
+            ),
+            ModelRequest(parts=(UserPromptPart(content=second_user_message),)),
+        ),
     ]
+
+
+def test_agent_excludes_tool_history_from_follow_up_run() -> None:
+    @tool
+    def get_available_orders() -> list[str]:
+        """Return the available order identifiers."""
+        return ["order-001", "order-002"]
+
+    clarification_result = AgentResult(
+        message="Which order do you mean?",
+    )
+    final_result = AgentResult(
+        message="Order order-002 has shipped.",
+    )
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                parts=(
+                    ToolCallPart(
+                        id="call-1",
+                        name=get_available_orders.definition.name,
+                        arguments={},
+                    ),
+                )
+            ),
+            ModelResponse(parts=(StructuredOutputPart(output=clarification_result),)),
+            ModelResponse(parts=(StructuredOutputPart(output=final_result),)),
+        ]
+    )
+    agent = Agent(model, Toolset(tools=(get_available_orders,)))
+
+    first_user_message = "Which of my orders has shipped?"
+    first_result = agent.run(first_user_message, context=TEST_CONTEXT)
+
+    conversation = Conversation(
+        messages=(
+            UserMessage(content=first_user_message),
+            AgentMessage(content=first_result.message),
+        )
+    )
+
+    agent.run(
+        "order-002",
+        context=TEST_CONTEXT,
+        conversation=conversation,
+    )
+
+    assert model.requests[2] == (
+        ModelRequest(parts=(UserPromptPart(content=first_user_message),)),
+        ModelResponse(parts=(TextPart(content="Which order do you mean?"),)),
+        ModelRequest(parts=(UserPromptPart(content="order-002"),)),
+    )
 
 
 class UnexpectedOutput(BaseModel):
