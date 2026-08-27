@@ -34,7 +34,12 @@ class StructuredOutputPart:
     output: BaseModel
 
 
-type ModelResponsePart = ToolCallPart | StructuredOutputPart
+@dataclass
+class TextPart:
+    content: str
+
+
+type ModelResponsePart = TextPart | ToolCallPart | StructuredOutputPart
 
 
 @dataclass

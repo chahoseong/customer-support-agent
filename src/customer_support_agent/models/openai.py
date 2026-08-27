@@ -14,6 +14,7 @@ from customer_support_agent.messages import (
     ModelMessage,
     ModelResponse,
     StructuredOutputPart,
+    TextPart,
     ToolCallPart,
     UserPromptPart,
 )
@@ -38,9 +39,22 @@ def _to_sdk_messages(
 
     for message in messages:
         if isinstance(message, ModelResponse):
+            text_parts = tuple(
+                part for part in message.parts if isinstance(part, TextPart)
+            )
+
             tool_calls = tuple(
                 part for part in message.parts if isinstance(part, ToolCallPart)
             )
+
+            if len(text_parts) == 1 and not tool_calls:
+                sdk_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": text_parts[0].content,
+                    }
+                )
+                continue
 
             sdk_tool_calls: list[ChatCompletionMessageFunctionToolCallParam] = [
                 {

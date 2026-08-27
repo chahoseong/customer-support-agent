@@ -8,6 +8,7 @@ from customer_support_agent.messages import (
     ModelRequest,
     ModelResponse,
     StructuredOutputPart,
+    TextPart,
     ToolCallPart,
     ToolResultPart,
     UserPromptPart,
@@ -413,3 +414,90 @@ def test_generate_returns_response_without_output_when_structured_output_validat
     )
 
     assert response == ModelResponse()
+
+
+def test_generate_converts_text_response_history_to_assistant_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_output = ExampleOutput(
+        message="Order order-002 has shipped.",
+    )
+
+    sdk_response = ParsedChatCompletion[ExampleOutput].model_validate(
+        {
+            "id": "completion-1",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": expected_output.model_dump_json(),
+                        "role": "assistant",
+                        "parsed": expected_output,
+                    },
+                }
+            ],
+            "created": 0,
+            "model": "test-model",
+            "object": "chat.completion",
+        }
+    )
+
+    client = Mock()
+    client.chat.completions.parse.return_value = sdk_response
+
+    monkeypatch.setattr(
+        "customer_support_agent.models.openai.OpenAI",
+        Mock(return_value=client),
+    )
+
+    model = OpenAIChatModel(
+        base_url="http://model-server.test/v1",
+        model_name="test-model",
+        api_key="test-api-key",
+    )
+
+    model.generate(
+        (
+            ModelRequest(
+                parts=(
+                    UserPromptPart(
+                        content="Where is my shipped order?",
+                    ),
+                )
+            ),
+            ModelResponse(
+                parts=(
+                    TextPart(
+                        content="Please provide the order ID.",
+                    ),
+                )
+            ),
+            ModelRequest(
+                parts=(
+                    UserPromptPart(
+                        content="order-002",
+                    ),
+                )
+            ),
+        ),
+        (),
+        output_type=ExampleOutput,
+    )
+
+    sent_messages = client.chat.completions.parse.call_args.kwargs["messages"]
+
+    assert sent_messages == [
+        {
+            "role": "user",
+            "content": "Where is my shipped order?",
+        },
+        {
+            "role": "assistant",
+            "content": "Please provide the order ID.",
+        },
+        {
+            "role": "user",
+            "content": "order-002",
+        },
+    ]
