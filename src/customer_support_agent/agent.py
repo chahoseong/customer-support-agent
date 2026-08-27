@@ -106,7 +106,6 @@ class Agent:
                     messages,
                     self._toolset.definitions,
                     instructions=self._instructions,
-                    output_type=AgentResult,
                 )
             except Exception as error:
                 logger.error(
@@ -167,8 +166,46 @@ class Agent:
 
                 continue
 
-            if len(response.parts) == 1:
-                part = response.parts[0]
+            if len(response.parts) != 1 or not isinstance(response.parts[0], TextPart):
+                logger.error(
+                    "The run stopped because the model returned no valid text response."
+                )
+
+                raise AgentError("invalid_model_response")
+
+            if model_call_count >= _MAX_MODEL_CALLS:
+                logger.error(
+                    "The run stopped because another model call would exceed "
+                    "the limit of %d.",
+                    _MAX_MODEL_CALLS,
+                )
+
+                raise AgentError("model_call_limit_exceeded")
+
+            model_call_count += 1
+
+            logger.info(
+                "Calling the model (%d of %d) for the final response.",
+                model_call_count,
+                _MAX_MODEL_CALLS,
+            )
+
+            try:
+                final_response = self._model.generate(
+                    messages,
+                    (),
+                    instructions=self._instructions,
+                    output_type=AgentResult,
+                )
+            except Exception as error:
+                logger.error(
+                    "The run stopped because the model call failed.",
+                )
+
+                raise AgentError("model_call_failed") from error
+
+            if len(final_response.parts) == 1:
+                part = final_response.parts[0]
 
                 if isinstance(part, StructuredOutputPart) and isinstance(
                     part.output, AgentResult

@@ -6,6 +6,7 @@ from customer_support_agent.customer_support import (
 from customer_support_agent.messages import (
     ModelResponse,
     StructuredOutputPart,
+    TextPart,
 )
 from customer_support_agent.tools import ToolContext
 from customer_support_agent.tools.order import (
@@ -28,6 +29,10 @@ customer. Base factual claims about orders, shipments, and cancellation
 eligibility only on information returned by the tools. Use structured tool
 errors when deciding what can be confirmed. Do not invent or assume missing
 facts.
+
+When an order status question includes an order_id, call find_order with that
+order_id. Do not return the final structured response until the required tool
+call has completed.
 
 When the customer's request does not identify the relevant order, retrieve
 their available orders and ask them to clarify which order they mean.
@@ -68,6 +73,7 @@ def test_customer_support_agent_passes_configured_tools_and_instructions_to_mode
 
     model = ScriptedModel(
         [
+            ModelResponse(parts=(TextPart(content=expected_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
@@ -82,7 +88,9 @@ def test_customer_support_agent_passes_configured_tools_and_instructions_to_mode
     assert result == expected_result
     assert model.received_tools == [
         CUSTOMER_SUPPORT_TOOLSET.definitions,
+        (),
     ]
     assert model.received_instructions == [
+        EXPECTED_CUSTOMER_SUPPORT_INSTRUCTIONS,
         EXPECTED_CUSTOMER_SUPPORT_INSTRUCTIONS,
     ]

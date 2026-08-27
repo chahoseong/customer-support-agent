@@ -3,6 +3,7 @@ from customer_support_agent.messages import (
     ModelRequest,
     ModelResponse,
     StructuredOutputPart,
+    TextPart,
     ToolCallPart,
     ToolResultPart,
     UserPromptPart,
@@ -61,10 +62,14 @@ def test_agent_sends_tool_result_to_model_and_returns_agent_result() -> None:
     final_response = ModelResponse(
         parts=(StructuredOutputPart(output=expected_result),)
     )
+    final_text_response = ModelResponse(
+        parts=(TextPart(content=expected_result.message),)
+    )
 
     model = ScriptedModel(
         [
             tool_call_response,
+            final_text_response,
             final_response,
         ]
     )
@@ -77,6 +82,11 @@ def test_agent_sends_tool_result_to_model_and_returns_agent_result() -> None:
     assert result == expected_result
     assert model.requests == [
         (user_request,),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
         (
             user_request,
             tool_call_response,
@@ -165,11 +175,15 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
     final_response = ModelResponse(
         parts=(StructuredOutputPart(output=expected_result),)
     )
+    final_text_response = ModelResponse(
+        parts=(TextPart(content=expected_result.message),)
+    )
 
     model = ScriptedModel(
         [
             first_tool_call_response,
             second_tool_call_response,
+            final_text_response,
             final_response,
         ]
     )
@@ -185,6 +199,13 @@ def test_agent_preserves_message_history_across_rounds_with_different_tools() ->
             user_request,
             first_tool_call_response,
             first_tool_result_request,
+        ),
+        (
+            user_request,
+            first_tool_call_response,
+            first_tool_result_request,
+            second_tool_call_response,
+            second_tool_result_request,
         ),
         (
             user_request,
@@ -248,10 +269,14 @@ def test_agent_prioritizes_tool_calls_when_response_also_contains_agent_result()
     final_response = ModelResponse(
         parts=(StructuredOutputPart(output=expected_result),)
     )
+    final_text_response = ModelResponse(
+        parts=(TextPart(content=expected_result.message),)
+    )
 
     model = ScriptedModel(
         [
             tool_call_response,
+            final_text_response,
             final_response,
         ]
     )
@@ -261,6 +286,11 @@ def test_agent_prioritizes_tool_calls_when_response_also_contains_agent_result()
     assert result == expected_result
     assert model.requests == [
         (user_request,),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
         (
             user_request,
             tool_call_response,
@@ -306,6 +336,7 @@ def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
     model = ScriptedModel(
         [
             tool_call_response,
+            ModelResponse(parts=(TextPart(content=expected_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
@@ -315,6 +346,11 @@ def test_agent_returns_unknown_tool_error_to_model_and_continues() -> None:
     assert result == expected_result
     assert model.requests == [
         (user_request,),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
         (
             user_request,
             tool_call_response,
@@ -368,6 +404,7 @@ def test_agent_returns_tool_execution_failed_error_to_model_and_continues() -> N
     model = ScriptedModel(
         [
             tool_call_response,
+            ModelResponse(parts=(TextPart(content=expected_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
@@ -382,10 +419,15 @@ def test_agent_returns_tool_execution_failed_error_to_model_and_continues() -> N
             tool_call_response,
             tool_result_request,
         ),
+        (
+            user_request,
+            tool_call_response,
+            tool_result_request,
+        ),
     ]
 
 
-def test_agent_provides_configured_tool_definitions_on_every_model_call() -> None:
+def test_agent_omits_tool_definitions_from_final_model_call() -> None:
     @tool
     def configured_tool(
         context: ToolContext,
@@ -408,6 +450,7 @@ def test_agent_provides_configured_tool_definitions_on_every_model_call() -> Non
                     ),
                 )
             ),
+            ModelResponse(parts=(TextPart(content="The order is processing."),)),
             ModelResponse(
                 parts=(
                     StructuredOutputPart(
@@ -428,4 +471,5 @@ def test_agent_provides_configured_tool_definitions_on_every_model_call() -> Non
     assert model.received_tools == [
         toolset.definitions,
         toolset.definitions,
+        (),
     ]
