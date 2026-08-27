@@ -147,11 +147,6 @@ def require_customer_order_status_tool_flow(model: RecordingChatModel) -> None:
             )
 
 
-def require_non_blank_final_answer(answer: str) -> None:
-    if not answer.strip():
-        raise RuntimeError("Expected a non-blank final answer.")
-
-
 def main() -> int:
     logging.basicConfig(
         level=logging.WARNING,
