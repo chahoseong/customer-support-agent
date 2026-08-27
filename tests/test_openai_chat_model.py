@@ -1,7 +1,7 @@
 from unittest.mock import Mock
 
 import pytest
-from openai.types.chat import ParsedChatCompletion
+from openai.types.chat import ChatCompletion, ParsedChatCompletion
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from customer_support_agent.messages import (
@@ -180,6 +180,136 @@ def test_generate_converts_tool_call_response(
                 arguments={"value": "expected"},
             ),
         )
+    )
+
+
+def test_generate_converts_tool_call_response_without_output_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk_response = ChatCompletion.model_validate(
+        {
+            "id": "completion-1",
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "message": {
+                        "content": None,
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "type": "function",
+                                "function": {
+                                    "name": EXAMPLE_TOOL_DEFINITION.name,
+                                    "arguments": '{"value":"expected"}',
+                                },
+                            }
+                        ],
+                    },
+                }
+            ],
+            "created": 0,
+            "model": "test-model",
+            "object": "chat.completion",
+        }
+    )
+
+    client = Mock()
+    client.chat.completions.create.return_value = sdk_response
+
+    monkeypatch.setattr(
+        "customer_support_agent.models.openai.OpenAI",
+        Mock(return_value=client),
+    )
+
+    model = OpenAIChatModel(
+        base_url="http://model-server.test/v1",
+        model_name="test-model",
+        api_key="test-api-key",
+    )
+
+    response = model.generate(
+        (ModelRequest(parts=(UserPromptPart(content="Use the example tool."),)),),
+        (EXAMPLE_TOOL_DEFINITION,),
+    )
+
+    client.chat.completions.create.assert_called_once_with(
+        model="test-model",
+        messages=[
+            {
+                "role": "user",
+                "content": "Use the example tool.",
+            }
+        ],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": EXAMPLE_TOOL_DEFINITION.name,
+                    "description": EXAMPLE_TOOL_DEFINITION.description,
+                    "parameters": EXAMPLE_TOOL_DEFINITION.parameters,
+                    "strict": True,
+                },
+            }
+        ],
+        parallel_tool_calls=False,
+    )
+
+    assert response == ModelResponse(
+        parts=(
+            ToolCallPart(
+                id="call-1",
+                name=EXAMPLE_TOOL_DEFINITION.name,
+                arguments={"value": "expected"},
+            ),
+        )
+    )
+
+
+def test_generate_converts_text_response_without_output_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdk_response = ChatCompletion.model_validate(
+        {
+            "id": "completion-1",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": "The requested information is ready.",
+                        "role": "assistant",
+                    },
+                }
+            ],
+            "created": 0,
+            "model": "test-model",
+            "object": "chat.completion",
+        }
+    )
+
+    client = Mock()
+    client.chat.completions.create.return_value = sdk_response
+
+    monkeypatch.setattr(
+        "customer_support_agent.models.openai.OpenAI",
+        Mock(return_value=client),
+    )
+
+    model = OpenAIChatModel(
+        base_url="http://model-server.test/v1",
+        model_name="test-model",
+        api_key="test-api-key",
+    )
+
+    response = model.generate(
+        (ModelRequest(parts=(UserPromptPart(content="Where is my order?"),)),),
+        (EXAMPLE_TOOL_DEFINITION,),
+    )
+
+    assert response == ModelResponse(
+        parts=(TextPart(content="The requested information is ready."),)
     )
 
 

@@ -14,7 +14,7 @@ class ChatModel(ABC):
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
         *,
-        output_type: type[BaseModel],
+        output_type: type[BaseModel] | None = None,
         instructions: str | None = None,
     ) -> ModelResponse:
         raise NotImplementedError

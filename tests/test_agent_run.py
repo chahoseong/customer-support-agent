@@ -27,23 +27,43 @@ EMPTY_TOOLSET = Toolset(tools=())
 TEST_CONTEXT = ToolContext(customer_id="customer-001")
 
 
-def test_agent_returns_agent_result_without_tool_calls() -> None:
+def test_agent_returns_structured_result_after_model_stops_calling_tools() -> None:
+    @tool
+    def configured_tool(value: str) -> str:
+        """Return the configured value."""
+        return value
+
+    toolset = Toolset(tools=(configured_tool,))
+    user_request = ModelRequest(parts=(UserPromptPart(content="Where is my order?"),))
     expected_result = AgentResult(
         message="Your order is being processed.",
     )
 
     model = ScriptedModel(
         [
+            ModelResponse(parts=(TextPart(content="Your order is being processed."),)),
             ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
 
-    result = Agent(model, EMPTY_TOOLSET).run(
+    result = Agent(model, toolset).run(
         "Where is my order?",
         context=TEST_CONTEXT,
     )
 
     assert result == expected_result
+    assert model.requests == [
+        (user_request,),
+        (user_request,),
+    ]
+    assert model.received_tools == [
+        toolset.definitions,
+        (),
+    ]
+    assert model.received_output_types == [
+        None,
+        AgentResult,
+    ]
 
 
 def test_agent_uses_only_conversation_passed_to_each_run() -> None:
@@ -69,7 +89,9 @@ def test_agent_uses_only_conversation_passed_to_each_run() -> None:
 
     model = ScriptedModel(
         [
+            ModelResponse(parts=(TextPart(content=first_expected_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=first_expected_result),)),
+            ModelResponse(parts=(TextPart(content=second_expected_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=second_expected_result),)),
         ]
     )
@@ -93,6 +115,22 @@ def test_agent_uses_only_conversation_passed_to_each_run() -> None:
                 parts=(TextPart(content="Please provide the shipped order ID."),)
             ),
             ModelRequest(parts=(UserPromptPart(content=first_user_message),)),
+        ),
+        (
+            ModelRequest(parts=(UserPromptPart(content="Where is my shipped order?"),)),
+            ModelResponse(
+                parts=(TextPart(content="Please provide the shipped order ID."),)
+            ),
+            ModelRequest(parts=(UserPromptPart(content=first_user_message),)),
+        ),
+        (
+            ModelRequest(parts=(UserPromptPart(content="Can I cancel my order?"),)),
+            ModelResponse(
+                parts=(
+                    TextPart(content="Please provide the order ID you want to cancel."),
+                )
+            ),
+            ModelRequest(parts=(UserPromptPart(content=second_user_message),)),
         ),
         (
             ModelRequest(parts=(UserPromptPart(content="Can I cancel my order?"),)),
@@ -130,7 +168,9 @@ def test_agent_excludes_tool_history_from_follow_up_run() -> None:
                     ),
                 )
             ),
+            ModelResponse(parts=(TextPart(content=clarification_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=clarification_result),)),
+            ModelResponse(parts=(TextPart(content=final_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=final_result),)),
         ]
     )
@@ -152,7 +192,7 @@ def test_agent_excludes_tool_history_from_follow_up_run() -> None:
         conversation=conversation,
     )
 
-    assert model.requests[2] == (
+    assert model.requests[3] == (
         ModelRequest(parts=(UserPromptPart(content=first_user_message),)),
         ModelResponse(parts=(TextPart(content="Which order do you mean?"),)),
         ModelRequest(parts=(UserPromptPart(content="order-002"),)),
@@ -198,7 +238,12 @@ class UnexpectedOutput(BaseModel):
 def test_agent_raises_invalid_model_response_without_exactly_one_agent_result(
     response: ModelResponse,
 ) -> None:
-    model = ScriptedModel([response])
+    model = ScriptedModel(
+        [
+            ModelResponse(parts=(TextPart(content="Draft response"),)),
+            response,
+        ]
+    )
 
     with pytest.raises(AgentError) as exc_info:
         Agent(model, EMPTY_TOOLSET).run(
@@ -218,7 +263,7 @@ def test_agent_wraps_model_failure_without_exposing_details() -> None:
             _messages: Sequence[ModelMessage],
             _tools: Sequence[ToolDefinition],
             *,
-            output_type: type[BaseModel],
+            output_type: type[BaseModel] | None = None,
             instructions: str | None = None,
         ) -> ModelResponse:
             raise model_error
@@ -270,6 +315,50 @@ def test_agent_stops_before_executing_tool_from_fifth_model_call() -> None:
     assert executed_values == tool_values[:4]
 
 
+def test_agent_stops_before_final_response_call_when_fifth_model_call_returns_text() -> (
+    None
+):
+    tool_values = [f"value-{index}" for index in range(1, 5)]
+    executed_values: list[str] = []
+
+    @tool
+    def recording_tool(value: str) -> str:
+        """Record and return the configured value."""
+        executed_values.append(value)
+        return value
+
+    toolset = Toolset(tools=(recording_tool,))
+    tool_responses = [
+        ModelResponse(
+            parts=(
+                ToolCallPart(
+                    id=f"call-{index}",
+                    name=recording_tool.definition.name,
+                    arguments={"value": value},
+                ),
+            )
+        )
+        for index, value in enumerate(tool_values, start=1)
+    ]
+    model = ScriptedModel(
+        [
+            *tool_responses,
+            ModelResponse(parts=(TextPart(content="The values were processed."),)),
+        ]
+    )
+
+    with pytest.raises(AgentError) as exc_info:
+        Agent(model, toolset).run(
+            "Process several values.",
+            context=TEST_CONTEXT,
+        )
+
+    assert exc_info.value.code == "model_call_limit_exceeded"
+    assert len(model.requests) == 5
+    assert model.received_output_types == [None] * 5
+    assert executed_values == tool_values
+
+
 def test_agent_accepts_agent_result_from_fifth_model_call() -> None:
     @tool
     def configured_tool(value: str) -> str:
@@ -288,7 +377,7 @@ def test_agent_accepts_agent_result_from_fifth_model_call() -> None:
                 ),
             )
         )
-        for index in range(1, 5)
+        for index in range(1, 4)
     ]
 
     expected_result = AgentResult(
@@ -298,6 +387,7 @@ def test_agent_accepts_agent_result_from_fifth_model_call() -> None:
     model = ScriptedModel(
         [
             *tool_responses,
+            ModelResponse(parts=(TextPart(content=expected_result.message),)),
             ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
         ]
     )
@@ -332,6 +422,13 @@ def test_agent_provides_configured_instructions_on_every_model_call() -> None:
             ),
             ModelResponse(
                 parts=(
+                    TextPart(
+                        content="The configured value was processed.",
+                    ),
+                )
+            ),
+            ModelResponse(
+                parts=(
                     StructuredOutputPart(
                         output=AgentResult(
                             message="The configured value was processed.",
@@ -356,10 +453,11 @@ def test_agent_provides_configured_instructions_on_every_model_call() -> None:
     assert model.received_instructions == [
         instructions,
         instructions,
+        instructions,
     ]
 
 
-def test_agent_provides_agent_result_type_on_every_model_call() -> None:
+def test_agent_requests_agent_result_type_only_for_final_model_call() -> None:
     @tool
     def configured_tool(value: str) -> str:
         """Return the configured value."""
@@ -375,6 +473,13 @@ def test_agent_provides_agent_result_type_on_every_model_call() -> None:
                         id="call-1",
                         name=configured_tool.definition.name,
                         arguments={"value": "expected"},
+                    ),
+                )
+            ),
+            ModelResponse(
+                parts=(
+                    TextPart(
+                        content="The configured value was processed.",
                     ),
                 )
             ),
@@ -399,6 +504,7 @@ def test_agent_provides_agent_result_type_on_every_model_call() -> None:
     )
 
     assert model.received_output_types == [
-        AgentResult,
+        None,
+        None,
         AgentResult,
     ]

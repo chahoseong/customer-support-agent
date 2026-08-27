@@ -17,6 +17,10 @@ eligibility only on information returned by the tools. Use structured tool
 errors when deciding what can be confirmed. Do not invent or assume missing
 facts.
 
+When an order status question includes an order_id, call find_order with that
+order_id. Do not return the final structured response until the required tool
+call has completed.
+
 When the customer's request does not identify the relevant order, retrieve
 their available orders and ask them to clarify which order they mean.
 

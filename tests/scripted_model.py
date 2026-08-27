@@ -13,14 +13,14 @@ class ScriptedModel(ChatModel):
         self.requests: list[tuple[ModelMessage, ...]] = []
         self.received_tools: list[tuple[ToolDefinition, ...]] = []
         self.received_instructions: list[str | None] = []
-        self.received_output_types: list[type[BaseModel]] = []
+        self.received_output_types: list[type[BaseModel] | None] = []
 
     def generate(
         self,
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
         *,
-        output_type: type[BaseModel],
+        output_type: type[BaseModel] | None = None,
         instructions: str | None = None,
     ) -> ModelResponse:
         self.requests.append(tuple(messages))

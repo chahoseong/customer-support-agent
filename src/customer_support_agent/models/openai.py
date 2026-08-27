@@ -4,9 +4,9 @@ from collections.abc import Sequence
 from openai import OpenAI
 from openai.types.chat import (
     ChatCompletionFunctionToolParam,
+    ChatCompletionMessage,
     ChatCompletionMessageFunctionToolCallParam,
     ChatCompletionMessageParam,
-    ParsedChatCompletionMessage,
 )
 from pydantic import BaseModel, ValidationError
 
@@ -114,7 +114,7 @@ def _to_sdk_tools(
 
 
 def _to_model_response(
-    response_message: ParsedChatCompletionMessage[BaseModel],
+    response_message: ChatCompletionMessage,
 ) -> ModelResponse:
     tool_call_parts: list[ToolCallPart] = []
 
@@ -133,10 +133,13 @@ def _to_model_response(
     if tool_call_parts:
         return ModelResponse(parts=tuple(tool_call_parts))
 
-    if response_message.parsed is not None:
-        return ModelResponse(
-            parts=(StructuredOutputPart(output=response_message.parsed),)
-        )
+    parsed = getattr(response_message, "parsed", None)
+
+    if isinstance(parsed, BaseModel):
+        return ModelResponse(parts=(StructuredOutputPart(output=parsed),))
+
+    if response_message.content is not None:
+        return ModelResponse(parts=(TextPart(content=response_message.content),))
 
     return ModelResponse()
 
@@ -160,14 +163,26 @@ class OpenAIChatModel(ChatModel):
         messages: Sequence[ModelMessage],
         tools: Sequence[ToolDefinition],
         *,
-        output_type: type[BaseModel],
+        output_type: type[BaseModel] | None = None,
         instructions: str | None = None,
     ) -> ModelResponse:
+        sdk_messages = _to_sdk_messages(messages, instructions=instructions)
+        sdk_tools = _to_sdk_tools(tools)
+
+        if output_type is None:
+            completion = self._client.chat.completions.create(
+                model=self._model_name,
+                messages=sdk_messages,
+                tools=sdk_tools,
+                parallel_tool_calls=False,
+            )
+            return _to_model_response(completion.choices[0].message)
+
         try:
             completion = self._client.chat.completions.parse(
                 model=self._model_name,
-                messages=_to_sdk_messages(messages, instructions=instructions),
-                tools=_to_sdk_tools(tools),
+                messages=sdk_messages,
+                tools=sdk_tools,
                 response_format=output_type,
                 parallel_tool_calls=False,
             )
