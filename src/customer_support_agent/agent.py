@@ -3,10 +3,16 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
+from customer_support_agent.conversation import (
+    Conversation,
+    UserMessage,
+)
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
+    ModelResponse,
     StructuredOutputPart,
+    TextPart,
     ToolCallPart,
     ToolResultPart,
     UserPromptPart,
@@ -17,6 +23,7 @@ from customer_support_agent.tools import ToolContext, Toolset
 logger = logging.getLogger(__name__)
 
 _MAX_MODEL_CALLS = 5
+_EMPTY_CONVERSATION = Conversation()
 
 type AgentErrorCode = Literal[
     "invalid_model_response",
@@ -62,10 +69,27 @@ class Agent:
         self._toolset = toolset
         self._instructions = instructions
 
-    def run(self, user_message: str, *, context: ToolContext) -> AgentResult:
-        messages: list[ModelMessage] = [
-            ModelRequest(parts=(UserPromptPart(content=user_message),))
-        ]
+    def run(
+        self,
+        user_message: str,
+        *,
+        context: ToolContext,
+        conversation: Conversation = _EMPTY_CONVERSATION,
+    ) -> AgentResult:
+        messages: list[ModelMessage] = []
+
+        for message in conversation.messages:
+            if isinstance(message, UserMessage):
+                messages.append(
+                    ModelRequest(parts=(UserPromptPart(content=message.content),))
+                )
+            else:
+                messages.append(
+                    ModelResponse(parts=(TextPart(content=message.content),))
+                )
+
+        messages.append(ModelRequest(parts=(UserPromptPart(content=user_message),)))
+
         model_call_count = 0
 
         while True:
