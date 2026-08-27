@@ -8,8 +8,11 @@ from textwrap import indent
 
 from pydantic import BaseModel
 
-from customer_support_agent.agent import Agent, AgentError
-from customer_support_agent.customer_support import CUSTOMER_SUPPORT_TOOLSET
+from customer_support_agent.agent import AgentError
+from customer_support_agent.customer_support import (
+    CUSTOMER_SUPPORT_TOOLSET,
+    create_customer_support_agent,
+)
 from customer_support_agent.messages import (
     ModelMessage,
     ModelRequest,
@@ -168,7 +171,7 @@ def main() -> int:
                 api_key=api_key,
             )
         )
-        agent = Agent(model, CUSTOMER_SUPPORT_TOOLSET)
+        agent = create_customer_support_agent(model)
         result = agent.run(
             "Call the available tools in exactly this order: "
             "get_customer_orders with no arguments, "
