@@ -1,7 +1,7 @@
 # 스크립트 실행 가이드
 
-이 디렉터리의 스크립트는 실제 모델 서버와 연결해 Tool Calling과 Agent Loop를 수동으로
-확인합니다.
+이 디렉터리의 스크립트는 실제 모델 서버와 연결해 Customer Support Agent를
+사용하거나 Tool Calling과 Agent Loop를 수동으로 확인합니다.
 
 ## 환경 설정
 
@@ -17,6 +17,19 @@ LLM_MODEL_NAME=<model-name>
 인증이 필요한 서버에서만 `LLM_API_KEY`를 설정합니다.
 
 아래 명령은 저장소 루트에서 실행합니다.
+
+## chat.py
+
+Customer Support Agent와 실제 사용자처럼 여러 턴으로 대화할 수 있는 로컬 Web
+Chat을 실행합니다. 데모 고객은 `customer-001`로 고정되어 있습니다. 현재 페이지의
+대화만 다음 응답에 사용하며 페이지를 새로고침하면 대화가 초기화됩니다.
+
+```powershell
+uv run --env-file .env python scripts/chat.py
+```
+
+터미널에 표시된 로컬 주소를 브라우저에서 엽니다. 이 실행기는 공개 공유 링크를
+만들지 않습니다.
 
 ## check_tool_calling_compatibility.py
 
