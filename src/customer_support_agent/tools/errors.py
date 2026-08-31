@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Literal, TypedDict
 
 type ToolErrorCode = Literal[
@@ -27,6 +28,26 @@ _MESSAGES: dict[ToolErrorCode, str] = {
         "The requested tool is not available. Use an available tool instead."
     ),
 }
+
+
+def get_tool_error_code(result: object) -> ToolErrorCode | None:
+    if not isinstance(result, Mapping):
+        return None
+
+    error = result.get("error")
+    if not isinstance(error, Mapping):
+        return None
+
+    code = error.get("code")
+    message = error.get("message")
+
+    if not isinstance(code, str) or code not in _MESSAGES:
+        return None
+
+    if not isinstance(message, str):
+        return None
+
+    return code
 
 
 def create_tool_error(code: ToolErrorCode) -> ToolError:

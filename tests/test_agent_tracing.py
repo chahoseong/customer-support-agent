@@ -23,6 +23,7 @@ from customer_support_agent.tools import (
     ToolContext,
     ToolDefinition,
     Toolset,
+    tool,
 )
 
 from .scripted_model import ScriptedModel
@@ -407,3 +408,273 @@ def test_agent_trace_records_unexpected_exception_without_sensitive_details(
     assert root_attributes["customer_support_agent.agent.model_call.count"] == 1
     assert root_attributes["customer_support_agent.agent.tool_call.count"] == 1
     assert SpanLevel(root_attributes["logfire.level_num"]) >= "error"
+
+
+def test_agent_trace_contains_tool_child_with_safe_attributes(
+    capfire: CaptureLogfire,
+) -> None:
+    @tool
+    def lookup_order_status(
+        context: ToolContext,
+        order_id: str,
+        include_history: bool,
+    ) -> dict[str, object]:
+        """Return the requested order status."""
+        return {
+            "customer_id": context.customer_id,
+            "order_id": order_id,
+            "status": "sensitive-tool-result-001",
+            "include_history": include_history,
+        }
+
+    expected_result = AgentResult(
+        message=("Your order is currently processing. sensitive-agent-result-001"),
+    )
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                parts=(
+                    ToolCallPart(
+                        id="call-1",
+                        name=lookup_order_status.definition.name,
+                        arguments={
+                            "order_id": "secret-order-001",
+                            "include_history": True,
+                        },
+                    ),
+                )
+            ),
+            ModelResponse(
+                parts=(
+                    TextPart(content="The requested order is currently processing."),
+                )
+            ),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
+        ]
+    )
+
+    agent = Agent(model, toolset=Toolset(tools=(lookup_order_status,)))
+
+    user_message = "sensitive-user-message-001"
+    customer_id = "sensitive-customer-001"
+
+    result = agent.run(user_message, context=ToolContext(customer_id=customer_id))
+
+    assert result == expected_result
+
+    exported_spans = capfire.exporter.exported_spans_as_dict(
+        parse_json_attributes=True,
+    )
+
+    project_spans = [
+        span
+        for span in exported_spans
+        if span["name"] in {"agent.run", "model.generate", "tool.execute"}
+    ]
+
+    root_spans = [span for span in project_spans if span["name"] == "agent.run"]
+    tool_spans = [span for span in project_spans if span["name"] == "tool.execute"]
+
+    assert len(root_spans) == 1
+    assert len(tool_spans) == 1
+
+    root_span = root_spans[0]
+    tool_span = tool_spans[0]
+    root_attributes = root_span["attributes"]
+    tool_attributes = tool_span["attributes"]
+
+    assert root_attributes["customer_support_agent.agent.tool_call.count"] == 1
+
+    assert tool_span["context"]["trace_id"] == root_span["context"]["trace_id"]
+    assert tool_span["parent"] is not None
+    assert tool_span["parent"]["span_id"] == root_span["context"]["span_id"]
+
+    assert (
+        tool_attributes["customer_support_agent.tool.name"]
+        == lookup_order_status.definition.name
+    )
+    assert tool_attributes["customer_support_agent.tool.argument.names"] == [
+        "include_history",
+        "order_id",
+    ]
+    assert tool_attributes["customer_support_agent.tool.outcome"] == "success"
+    assert "customer_support_agent.tool.error.code" not in tool_attributes
+    assert "error.type" not in tool_attributes
+
+    serialized_project_spans = json.dumps(project_spans, sort_keys=True)
+
+    for sensitive_value in (
+        user_message,
+        customer_id,
+        "secret-order-001",
+        "sensitive-tool-result-001",
+        "sensitive-agent-result-001",
+    ):
+        assert sensitive_value not in serialized_project_spans
+
+
+def test_agent_trace_records_tool_error_without_error_level(
+    capfire: CaptureLogfire,
+) -> None:
+    @tool
+    def find_order(order_id: str) -> dict[str, object]:
+        """Find an order by ID."""
+        return {
+            "error": {
+                "code": "order_not_found",
+                "message": "sensitive-tool-error-message-001",
+            }
+        }
+
+    expected_result = AgentResult(
+        message="I could not find the requested order.",
+    )
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                parts=(
+                    ToolCallPart(
+                        id="call-1",
+                        name=find_order.definition.name,
+                        arguments={"order_id": "secret-order-404"},
+                    ),
+                )
+            ),
+            ModelResponse(
+                parts=(TextPart(content="The requested order was not found."),)
+            ),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
+        ]
+    )
+
+    agent = Agent(model, toolset=Toolset(tools=(find_order,)))
+
+    result = agent.run(
+        "Find my missing order.",
+        context=ToolContext(customer_id="sensitive-customer-001"),
+    )
+
+    assert result == expected_result
+
+    exported_spans = capfire.exporter.exported_spans_as_dict(
+        parse_json_attributes=True,
+    )
+
+    project_spans = [
+        span
+        for span in exported_spans
+        if span["name"] in {"agent.run", "model.generate", "tool.execute"}
+    ]
+
+    tool_spans = [span for span in project_spans if span["name"] == "tool.execute"]
+
+    assert len(tool_spans) == 1
+
+    tool_span = tool_spans[0]
+    tool_attributes = tool_span["attributes"]
+
+    assert (
+        tool_attributes["customer_support_agent.tool.name"]
+        == find_order.definition.name
+    )
+    assert tool_attributes["customer_support_agent.tool.outcome"] == "tool_error"
+    assert (
+        tool_attributes["customer_support_agent.tool.error.code"] == "order_not_found"
+    )
+    assert "error.type" not in tool_attributes
+    assert "events" not in tool_span
+
+    tool_level_num = tool_attributes.get("logfire.level_num")
+    if tool_level_num is not None:
+        assert SpanLevel(tool_level_num) < "error"
+
+    serialized_project_spans = json.dumps(project_spans, sort_keys=True)
+
+    for sensitive_value in (
+        "secret-order-404",
+        "sensitive-tool-error-message-001",
+    ):
+        assert sensitive_value not in serialized_project_spans
+
+
+def test_agent_trace_records_tool_exception_without_sensitive_details(
+    capfire: CaptureLogfire,
+) -> None:
+    @tool
+    def broken_tool(order_id: str) -> object:
+        """Fail while processing an order."""
+        raise RuntimeError("sensitive-executor-failure-001")
+
+    expected_result = AgentResult(
+        message="I could not process the requested order.",
+    )
+
+    model = ScriptedModel(
+        [
+            ModelResponse(
+                parts=(
+                    ToolCallPart(
+                        id="call-1",
+                        name=broken_tool.definition.name,
+                        arguments={"order_id": "secret-order-500"},
+                    ),
+                )
+            ),
+            ModelResponse(parts=(TextPart(content="The requested operation failed."),)),
+            ModelResponse(parts=(StructuredOutputPart(output=expected_result),)),
+        ]
+    )
+
+    agent = Agent(model, toolset=Toolset(tools=(broken_tool,)))
+
+    result = agent.run(
+        "Process the requested order.",
+        context=ToolContext(customer_id="sensitive-customer-500"),
+    )
+
+    assert result == expected_result
+
+    exported_spans = capfire.exporter.exported_spans_as_dict(
+        parse_json_attributes=True,
+    )
+
+    project_spans = [
+        span
+        for span in exported_spans
+        if span["name"] in {"agent.run", "model.generate", "tool.execute"}
+    ]
+
+    root_spans = [span for span in project_spans if span["name"] == "agent.run"]
+    tool_spans = [span for span in project_spans if span["name"] == "tool.execute"]
+
+    assert len(root_spans) == 1
+    assert len(tool_spans) == 1
+
+    root_attributes = root_spans[0]["attributes"]
+    tool_span = tool_spans[0]
+    tool_attributes = tool_span["attributes"]
+
+    # Tool 예외가 ToolError로 정규화됐기 때문에 Agent 실행은 완료된다.
+    assert root_attributes["customer_support_agent.agent.outcome"] == "success"
+
+    assert tool_attributes["customer_support_agent.tool.outcome"] == "exception"
+    assert (
+        tool_attributes["customer_support_agent.tool.error.code"]
+        == "tool_execution_failed"
+    )
+    assert tool_attributes["error.type"] == "RuntimeError"
+    assert SpanLevel(tool_attributes["logfire.level_num"]) >= "error"
+
+    # 원래 예외를 span 밖으로 전달하지 않았으므로 자동 exception event가 없어야 한다.
+    assert "events" not in tool_span
+
+    serialized_project_spans = json.dumps(project_spans, sort_keys=True)
+
+    for forbidden_value in (
+        "secret-order-500",
+        "sensitive-executor-failure-001",
+        "The tool failed unexpectedly; do not assume a result.",
+    ):
+        assert forbidden_value not in serialized_project_spans
