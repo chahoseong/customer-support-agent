@@ -1,12 +1,21 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 
-from .errors import create_tool_error
+import logfire
+
+from .errors import create_tool_error, get_tool_error_code
 from .tool import (
     Tool,
     ToolContext,
     ToolDefinition,
 )
+
+
+def _get_tool_argument_names(arguments: object) -> list[str]:
+    if not isinstance(arguments, Mapping):
+        return []
+
+    return sorted(key for key in arguments if isinstance(key, str))
 
 
 class Toolset:
@@ -39,14 +48,54 @@ class Toolset:
         *,
         context: ToolContext,
     ) -> object:
-        configured_tool = self._tools_by_name.get(tool_name)
-        if configured_tool is None:
-            return create_tool_error("unknown_tool")
-
-        try:
-            return configured_tool(
-                arguments,
-                context=context,
+        with logfire.span("tool.execute") as tool_span:
+            tool_span.set_attributes(
+                {
+                    "customer_support_agent.tool.name": tool_name,
+                    "customer_support_agent.tool.argument.names": (
+                        _get_tool_argument_names(arguments)
+                    ),
+                }
             )
-        except Exception:
-            return create_tool_error("tool_execution_failed")
+
+            configured_tool = self._tools_by_name.get(tool_name)
+            result: object
+
+            if configured_tool is None:
+                result = create_tool_error("unknown_tool")
+            else:
+                try:
+                    result = configured_tool(
+                        arguments,
+                        context=context,
+                    )
+                except Exception as error:
+                    tool_span.set_attributes(
+                        {
+                            "customer_support_agent.tool.outcome": "exception",
+                            "customer_support_agent.tool.error.code": (
+                                "tool_execution_failed"
+                            ),
+                            "error.type": type(error).__name__,
+                        }
+                    )
+                    tool_span.set_level("error")
+                    return create_tool_error("tool_execution_failed")
+
+            tool_error_code = get_tool_error_code(result)
+
+            if tool_error_code is None:
+                tool_span.set_attributes(
+                    {
+                        "customer_support_agent.tool.outcome": "success",
+                    }
+                )
+            else:
+                tool_span.set_attributes(
+                    {
+                        "customer_support_agent.tool.outcome": "tool_error",
+                        "customer_support_agent.tool.error.code": tool_error_code,
+                    }
+                )
+
+            return result
