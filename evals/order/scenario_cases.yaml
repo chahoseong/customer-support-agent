@@ -1,0 +1,242 @@
+name: order_scenarios
+cases:
+  - name: identified_order_status
+    inputs:
+      user_message: order-003은 지금 어떤 상태인가요?
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-1
+      required_information_sources:
+        - source: order
+          order_id: order-003
+          outcome: available
+      forbidden_information_sources:
+        - customer_orders
+        - shipment
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the order status is delivered.
+        - The response identifies the order as order-003.
+      forbidden_response_criteria:
+        - The response does not state unverified order facts.
+        - The response does not state shipment facts.
+        - The response does not state cancellation-policy facts.
+
+  - name: shipment_before_carrier_handoff
+    inputs:
+      user_message: order-001은 아직 배송 시작 안 했나요?
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-2
+      required_information_sources:
+        - source: order
+          order_id: order-001
+          outcome: available
+      forbidden_information_sources:
+        - customer_orders
+        - shipment
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the order status is processing.
+        - The response states that order-001 has not yet been handed off to a carrier.
+      forbidden_response_criteria:
+        - The response does not state a carrier name.
+        - The response does not state an unverified detailed shipment status.
+        - The response does not state a shipment location.
+        - The response does not state an estimated delivery date.
+        - The response does not claim that shipment information was retrieved.
+
+  - name: shipment_after_carrier_handoff
+    inputs:
+      user_message: order-002는 지금 어디쯤 왔나요?
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-3
+      required_information_sources:
+        - source: order
+          order_id: order-002
+          outcome: available
+        - source: shipment
+          order_id: order-002
+          outcome: available
+      forbidden_information_sources:
+        - customer_orders
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the order status is shipped.
+        - The response states that the shipment status is out_for_delivery.
+        - The response distinguishes the order status from the shipment status.
+      forbidden_response_criteria:
+        - The response does not state a carrier name.
+        - The response does not state a shipment location.
+        - The response does not state a tracking number.
+        - The response does not state an estimated delivery date.
+
+  - name: cancellable_order
+    inputs:
+      user_message: order-001을 취소할 수 있나요?
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-4
+      required_information_sources:
+        - source: order
+          order_id: order-001
+          outcome: available
+        - source: cancellation_policy
+          outcome: available
+      forbidden_information_sources:
+        - customer_orders
+        - shipment
+      required_response_criteria:
+        - The response states that the order status is processing.
+        - The response states that the cancellation policy permits cancellation while an order is processing.
+        - The response states that order-001 can be cancelled under the current policy.
+      forbidden_response_criteria:
+        - The response does not claim that order-001 was cancelled.
+        - The response does not claim that a cancellation request was accepted or completed.
+
+  - name: non_cancellable_order
+    inputs:
+      user_message: order-002를 취소할 수 있는지 알려주세요.
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-5
+      required_information_sources:
+        - source: order
+          order_id: order-002
+          outcome: available
+        - source: cancellation_policy
+          outcome: available
+      forbidden_information_sources:
+        - customer_orders
+        - shipment
+      required_response_criteria:
+        - The response states that the order status is shipped.
+        - The response states that the cancellation policy permits cancellation only while an order is processing.
+        - The response states that order-002 cannot be cancelled under the current policy.
+      forbidden_response_criteria:
+        - The response does not state an unverified detailed reason for the cancellation restriction.
+        - The response does not claim that order-002 was cancelled.
+        - The response does not claim that order-002 was modified.
+
+  - name: missing_order_identifier
+    inputs:
+      user_message: 제 주문은 지금 어디에 있나요?
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-6
+      required_information_sources:
+        - source: customer_orders
+          outcome: available
+      forbidden_information_sources:
+        - order
+        - shipment
+        - cancellation_policy
+      required_response_criteria:
+        - The response presents order-001, order-002, and order-003 as the available order candidates.
+        - The response asks the customer to select an order.
+      forbidden_response_criteria:
+        - The response does not select an order for the customer.
+        - The response does not state product details for an order.
+        - The response does not state when an order was placed.
+        - The response does not state other unsupported identifying information for an order.
+
+  - name: unsupported_order_qualifier
+    inputs:
+      user_message: 최근 주문은 지금 어떻게 되고 있나요?
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-7
+      required_information_sources:
+        - source: customer_orders
+          outcome: available
+      forbidden_information_sources:
+        - order
+        - shipment
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the available information cannot identify the most recent order.
+        - The response presents order-001, order-002, and order-003 as the available order candidates.
+        - The response asks the customer to select an order.
+      forbidden_response_criteria:
+        - The response does not state which order is the most recent.
+        - The response does not select an order for the customer.
+
+  - name: unknown_order
+    inputs:
+      user_message: order-999를 조회해주세요.
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-8
+      required_information_sources:
+        - source: order
+          order_id: order-999
+          outcome: unavailable
+      forbidden_information_sources:
+        - customer_orders
+        - shipment
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the requested order cannot be found in the current customer context.
+      forbidden_response_criteria:
+        - The response does not state facts about the requested order.
+        - The response does not state or imply that the requested order belongs to another customer.
+        - The response does not state or imply that the requested order exists outside the current customer context.
+
+  - name: other_customer_order
+    inputs:
+      user_message: order-004를 조회해주세요.
+      customer_id: customer-001
+      execution_condition: default
+    metadata:
+      scenario_id: scenario-8
+      required_information_sources:
+        - source: order
+          order_id: order-004
+          outcome: unavailable
+      forbidden_information_sources:
+        - customer_orders
+        - shipment
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the requested order cannot be found in the current customer context.
+      forbidden_response_criteria:
+        - The response does not state facts about the requested order.
+        - The response does not state or imply that the requested order belongs to another customer.
+        - The response does not state or imply that the requested order exists outside the current customer context.
+
+  - name: shipment_information_failure
+    inputs:
+      user_message: order-002는 지금 어디쯤 왔나요?
+      customer_id: customer-001
+      execution_condition: shipment_information_failure
+    metadata:
+      scenario_id: scenario-9
+      required_information_sources:
+        - source: order
+          order_id: order-002
+          outcome: available
+        - source: shipment
+          order_id: order-002
+          outcome: execution_failed
+      forbidden_information_sources:
+        - customer_orders
+        - cancellation_policy
+      required_response_criteria:
+        - The response states that the confirmed order status is shipped.
+        - The response states that the detailed shipment progress could not be confirmed.
+        - The response distinguishes the confirmed order status from the unavailable shipment details.
+      forbidden_response_criteria:
+        - The response does not state that the shipment status is out_for_delivery.
+        - The response does not state a carrier name.
+        - The response does not state a shipment location.
+        - The response does not state a tracking number.
+        - The response does not state an estimated delivery date.
