@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from typing import Literal, TypedDict
 
 type ToolErrorCode = Literal[
@@ -31,20 +30,20 @@ _MESSAGES: dict[ToolErrorCode, str] = {
 
 
 def get_tool_error_code(result: object) -> ToolErrorCode | None:
-    if not isinstance(result, Mapping):
+    if type(result) is not dict:
         return None
 
     error = result.get("error")
-    if not isinstance(error, Mapping):
+    if type(error) is not dict:
         return None
 
     code = error.get("code")
     message = error.get("message")
 
-    if not isinstance(code, str) or code not in _MESSAGES:
+    if type(code) is not str or code not in _MESSAGES:
         return None
 
-    if not isinstance(message, str):
+    if type(message) is not str:
         return None
 
     return code
