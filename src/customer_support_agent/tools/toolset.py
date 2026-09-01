@@ -1,4 +1,4 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from copy import deepcopy
 
 import logfire
@@ -12,10 +12,10 @@ from .tool import (
 
 
 def _get_tool_argument_names(arguments: object) -> list[str]:
-    if not isinstance(arguments, Mapping):
+    if type(arguments) is not dict:
         return []
 
-    return sorted(key for key in arguments if isinstance(key, str))
+    return sorted(key for key in arguments if type(key) is str)
 
 
 class Toolset:
