@@ -24,6 +24,7 @@ class _ToolSpanSpec:
     tool_name: str | None
     outcome: str | None = None
     error_code: str | None = None
+    argument_names: str | list[str] | list[int] | None = None
 
 
 def _create_tool_span_tree(*tool_span_specs: _ToolSpanSpec) -> SpanTree:
@@ -48,6 +49,10 @@ def _create_tool_span_tree(*tool_span_specs: _ToolSpanSpec) -> SpanTree:
         if spec.error_code is not None:
             tool_span.attributes["customer_support_agent.tool.error.code"] = (
                 spec.error_code
+            )
+        if spec.argument_names is not None:
+            tool_span.attributes["customer_support_agent.tool.argument.names"] = (
+                spec.argument_names
             )
 
         tool_spans.append(tool_span)
@@ -600,4 +605,264 @@ def test_agent_tool_use_evaluator_reports_missing_tool_outcome_observations() ->
     assert results["agent_tool_calls_have_expected_outcomes"] == EvaluationReason(
         value=False,
         reason=("Missing Tool outcome observations for information sources: shipment."),
+    )
+
+
+@pytest.mark.parametrize(
+    "argument_names",
+    [
+        pytest.param(["order_id"], id="required-name-only"),
+        pytest.param(
+            ["include_history", "order_id"],
+            id="required-name-with-additional-name",
+        ),
+        pytest.param(
+            '["include_history", "order_id"]',
+            id="required-name-from-json-array",
+        ),
+    ],
+)
+def test_agent_tool_use_evaluator_returns_true_when_required_argument_names_are_present(
+    argument_names: str | list[str],
+) -> None:
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_information_sources=frozenset(
+            {
+                InformationSourceExpectation(
+                    source="order",
+                    order_id="order-001",
+                    outcome="available",
+                )
+            }
+        ),
+        forbidden_information_sources=frozenset(),
+        required_response_criteria=("Report the order information.",),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        span_tree=_create_tool_span_tree(
+            _ToolSpanSpec(
+                tool_name=find_order.definition.name,
+                outcome="success",
+                argument_names=argument_names,
+            )
+        ),
+    )
+
+    results = AgentToolUseEvaluator().evaluate(context)
+
+    assert results["agent_tool_calls_include_required_arguments"] == EvaluationReason(
+        value=True
+    )
+
+
+def test_agent_tool_use_evaluator_reports_missing_required_argument_names_from_repeated_tool_calls() -> (
+    None
+):
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_information_sources=frozenset(
+            {
+                InformationSourceExpectation(
+                    source="order",
+                    order_id="order-001",
+                    outcome="available",
+                )
+            }
+        ),
+        forbidden_information_sources=frozenset(),
+        required_response_criteria=("Report the order information.",),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        span_tree=_create_tool_span_tree(
+            _ToolSpanSpec(
+                tool_name=find_order.definition.name,
+                outcome="success",
+                argument_names=["order_id"],
+            ),
+            _ToolSpanSpec(
+                tool_name=find_order.definition.name,
+                outcome="success",
+                argument_names=["include_history"],
+            ),
+        ),
+    )
+
+    results = AgentToolUseEvaluator().evaluate(context)
+
+    assert results["agent_tool_calls_include_required_arguments"] == EvaluationReason(
+        value=False,
+        reason=(
+            "Missing required Tool argument names for "
+            "information sources: order (order_id)."
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "argument_names",
+    [
+        pytest.param(None, id="missing-attribute"),
+        pytest.param("order_id", id="invalid-json-string"),
+        pytest.param([1, 2], id="non-string-list"),
+        pytest.param('{"order_id": true}', id="json-non-array"),
+    ],
+)
+def test_agent_tool_use_evaluator_reports_uninterpretable_argument_names(
+    argument_names: str | list[int] | None,
+) -> None:
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_information_sources=frozenset(
+            {
+                InformationSourceExpectation(
+                    source="order",
+                    order_id="order-001",
+                    outcome="available",
+                )
+            }
+        ),
+        forbidden_information_sources=frozenset(),
+        required_response_criteria=("Report the order information.",),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        span_tree=_create_tool_span_tree(
+            _ToolSpanSpec(
+                tool_name=find_order.definition.name,
+                outcome="success",
+                argument_names=argument_names,
+            )
+        ),
+    )
+
+    results = AgentToolUseEvaluator().evaluate(context)
+
+    assert results["agent_tool_calls_include_required_arguments"] == EvaluationReason(
+        value=False,
+        reason=("Uninterpretable Tool argument names for information sources: order."),
+    )
+
+
+def test_agent_tool_use_evaluator_returns_true_for_arguments_without_relevant_tool_calls() -> (
+    None
+):
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_information_sources=frozenset(
+            {
+                InformationSourceExpectation(
+                    source="order",
+                    order_id="order-001",
+                    outcome="available",
+                )
+            }
+        ),
+        forbidden_information_sources=frozenset(),
+        required_response_criteria=("Report the order information.",),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        span_tree=SpanTree(),
+    )
+
+    results = AgentToolUseEvaluator().evaluate(context)
+
+    assert results["agent_tool_calls_include_required_arguments"] == EvaluationReason(
+        value=True
+    )
+
+
+def test_agent_tool_use_evaluator_reports_missing_required_argument_names_in_source_order() -> (
+    None
+):
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_information_sources=frozenset(
+            {
+                InformationSourceExpectation(
+                    source="shipment",
+                    order_id="order-001",
+                    outcome="available",
+                ),
+                InformationSourceExpectation(
+                    source="order",
+                    order_id="order-001",
+                    outcome="available",
+                ),
+            }
+        ),
+        forbidden_information_sources=frozenset(),
+        required_response_criteria=("Report the order and shipment information.",),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        span_tree=_create_tool_span_tree(
+            _ToolSpanSpec(
+                tool_name=find_shipment.definition.name,
+                outcome="success",
+                argument_names=[],
+            ),
+            _ToolSpanSpec(
+                tool_name=find_order.definition.name,
+                outcome="success",
+                argument_names=[],
+            ),
+        ),
+    )
+
+    results = AgentToolUseEvaluator().evaluate(context)
+
+    assert results["agent_tool_calls_include_required_arguments"] == EvaluationReason(
+        value=False,
+        reason=(
+            "Missing required Tool argument names for information sources: "
+            "order (order_id), shipment (order_id)."
+        ),
+    )
+
+
+def test_agent_tool_use_evaluator_excludes_order_id_values_from_failure_reasons() -> (
+    None
+):
+    sensitive_order_id = "sensitive-order-id-must-not-appear"
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_information_sources=frozenset(
+            {
+                InformationSourceExpectation(
+                    source="order",
+                    order_id=sensitive_order_id,
+                    outcome="available",
+                )
+            }
+        ),
+        forbidden_information_sources=frozenset(),
+        required_response_criteria=("Report the order information.",),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        span_tree=_create_tool_span_tree(
+            _ToolSpanSpec(
+                tool_name=find_order.definition.name,
+                outcome="success",
+                argument_names=[],
+            )
+        ),
+    )
+
+    results = AgentToolUseEvaluator().evaluate(context)
+
+    assert results["agent_tool_calls_include_required_arguments"].value is False
+    assert all(
+        result.reason is None or sensitive_order_id not in result.reason
+        for result in results.values()
     )
