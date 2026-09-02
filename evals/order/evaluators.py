@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -19,6 +20,7 @@ from .models import (
 )
 
 _TOOL_NAME_ATTRIBUTE = "customer_support_agent.tool.name"
+_TOOL_ARGUMENT_NAMES_ATTRIBUTE = "customer_support_agent.tool.argument.names"
 _TOOL_OUTCOME_ATTRIBUTE = "customer_support_agent.tool.outcome"
 _TOOL_ERROR_CODE_ATTRIBUTE = "customer_support_agent.tool.error.code"
 
@@ -34,6 +36,7 @@ _INFORMATION_SOURCE_BY_TOOL_NAME: dict[str, InformationSource] = {
 class _ToolObservation:
     tool_name: str | None
     information_source: InformationSource | None
+    argument_names: frozenset[str] | None
     outcome: InformationSourceOutcome | None
     diagnostic: str | None
 
@@ -65,6 +68,23 @@ def _normalize_tool_outcome(
         return "unavailable"
 
     return None
+
+
+def _normalize_tool_argument_names(
+    raw_argument_names: object,
+) -> frozenset[str] | None:
+    if type(raw_argument_names) is str:
+        try:
+            raw_argument_names = json.loads(raw_argument_names)
+        except json.JSONDecodeError:
+            return None
+
+    if type(raw_argument_names) is not list or not all(
+        type(name) is str for name in raw_argument_names
+    ):
+        return None
+
+    return frozenset(raw_argument_names)
 
 
 def _get_tool_observation_diagnostic(
@@ -115,6 +135,8 @@ def _observe_tool_span(span: SpanNode) -> _ToolObservation:
     )
     tool_outcome = span.attributes.get(_TOOL_OUTCOME_ATTRIBUTE)
     error_code = span.attributes.get(_TOOL_ERROR_CODE_ATTRIBUTE)
+    raw_argument_names = span.attributes.get(_TOOL_ARGUMENT_NAMES_ATTRIBUTE)
+    argument_names = _normalize_tool_argument_names(raw_argument_names)
 
     normalized_outcome = _normalize_tool_outcome(
         information_source=information_source,
@@ -125,6 +147,7 @@ def _observe_tool_span(span: SpanNode) -> _ToolObservation:
     return _ToolObservation(
         tool_name=tool_name,
         information_source=information_source,
+        argument_names=argument_names,
         outcome=normalized_outcome,
         diagnostic=_get_tool_observation_diagnostic(
             tool_name=tool_name,
@@ -133,6 +156,54 @@ def _observe_tool_span(span: SpanNode) -> _ToolObservation:
             error_code=error_code,
             normalized_outcome=normalized_outcome,
         ),
+    )
+
+
+def _evaluate_tool_arguments(
+    *,
+    expectations: frozenset[InformationSourceExpectation],
+    observations: list[_ToolObservation],
+) -> EvaluationReason:
+    sources_requiring_order_id = {
+        expectation.source
+        for expectation in expectations
+        if expectation.order_id is not None
+    }
+    sources_missing_order_id: set[InformationSource] = set()
+    sources_with_uninterpretable_argument_names: set[InformationSource] = set()
+
+    for observation in observations:
+        information_source = observation.information_source
+        if (
+            information_source is None
+            or information_source not in sources_requiring_order_id
+        ):
+            continue
+
+        if observation.argument_names is None:
+            sources_with_uninterpretable_argument_names.add(information_source)
+            continue
+
+        if "order_id" not in observation.argument_names:
+            sources_missing_order_id.add(information_source)
+
+    failure_reasons: list[str] = []
+
+    if sources_with_uninterpretable_argument_names:
+        failure_reasons.append(
+            "Uninterpretable Tool argument names for information sources: "
+            f"{', '.join(sorted(sources_with_uninterpretable_argument_names))}."
+        )
+
+    if sources_missing_order_id:
+        failure_reasons.append(
+            "Missing required Tool argument names for information sources: "
+            f"{', '.join(f'{source} (order_id)' for source in sorted(sources_missing_order_id))}."
+        )
+
+    return EvaluationReason(
+        value=not failure_reasons,
+        reason=" ".join(failure_reasons) if failure_reasons else None,
     )
 
 
@@ -257,6 +328,10 @@ class AgentToolUseEvaluator(Evaluator[OrderEvalInput, AgentResult, OrderEvalMeta
             expectations=metadata.required_information_sources,
             observations=tool_observations,
         )
+        tool_argument_evaluation = _evaluate_tool_arguments(
+            expectations=metadata.required_information_sources,
+            observations=tool_observations,
+        )
 
         return {
             "agent_uses_required_information_sources": EvaluationReason(
@@ -267,9 +342,6 @@ class AgentToolUseEvaluator(Evaluator[OrderEvalInput, AgentResult, OrderEvalMeta
                 value=avoids_forbidden_sources,
                 reason=observed_forbidden_sources_reason,
             ),
-            "agent_tool_calls_include_required_arguments": EvaluationReason(
-                value=False,
-                reason="Evaluation is not implemented.",
-            ),
+            "agent_tool_calls_include_required_arguments": tool_argument_evaluation,
             "agent_tool_calls_have_expected_outcomes": tool_outcome_evaluation,
         }
