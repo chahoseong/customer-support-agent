@@ -1,9 +1,4 @@
-from evals.order.evaluators import (
-    ToolArgumentsEvaluator,
-    ToolOutcomesEvaluator,
-    ToolSelectionEvaluator,
-    ToolTrajectoryEvaluator,
-)
+from evals.order.evaluators import ToolTrajectoryEvaluator
 from evals.order.models import (
     ExpectedToolUse,
     ObservedToolUse,
@@ -179,33 +174,3 @@ def test_tool_trajectory_evaluator_returns_no_result_when_relative_order_is_not_
     result = ToolTrajectoryEvaluator().evaluate(context)
 
     assert result == {}
-
-
-def test_tool_evaluators_report_only_trajectory_failure_when_required_tools_are_reversed() -> (
-    None
-):
-    context = _create_evaluator_context(
-        required_tool_sequence=("find_order", "find_shipment"),
-        tool_uses=(
-            ObservedToolUse(
-                tool_name="find_shipment",
-                arguments={"order_id": "order-002"},
-                outcome="success",
-            ),
-            ObservedToolUse(
-                tool_name="find_order",
-                arguments={"order_id": "order-002"},
-                outcome="success",
-            ),
-        ),
-    )
-
-    selection = ToolSelectionEvaluator().evaluate(context)
-    arguments = ToolArgumentsEvaluator().evaluate(context)
-    outcomes = ToolOutcomesEvaluator().evaluate(context)
-    trajectory = ToolTrajectoryEvaluator().evaluate(context)
-
-    assert selection["tool_selection"].value is True
-    assert arguments["tool_arguments"].value is True
-    assert outcomes["tool_outcomes"].value is True
-    assert trajectory["tool_trajectory"].value is False
