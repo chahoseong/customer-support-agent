@@ -2,6 +2,12 @@ from pathlib import Path
 
 import pytest
 from evals.order.dataset import load_order_dataset
+from evals.order.evaluators import (
+    ToolArgumentsEvaluator,
+    ToolOutcomesEvaluator,
+    ToolSelectionEvaluator,
+    ToolTrajectoryEvaluator,
+)
 from evals.order.models import (
     ExpectedToolUse,
     OrderEvalInput,
@@ -219,3 +225,28 @@ def test_order_eval_metadata_rejects_duplicate_tool_names_in_required_sequence()
             required_response_criteria=("State the verified result.",),
             forbidden_response_criteria=("Do not state unverified facts.",),
         )
+
+
+def test_load_order_dataset_returns_all_tool_evaluators_in_stable_order() -> None:
+    dataset = load_order_dataset()
+
+    assert tuple(type(evaluator) for evaluator in dataset.evaluators) == (
+        ToolSelectionEvaluator,
+        ToolArgumentsEvaluator,
+        ToolOutcomesEvaluator,
+        ToolTrajectoryEvaluator,
+    )
+
+
+def test_load_order_dataset_returns_fresh_tool_evaluator_instances() -> None:
+    first_dataset = load_order_dataset()
+    second_dataset = load_order_dataset()
+
+    assert all(
+        first_evaluator is not second_evaluator
+        for first_evaluator, second_evaluator in zip(
+            first_dataset.evaluators,
+            second_dataset.evaluators,
+            strict=True,
+        )
+    )
