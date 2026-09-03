@@ -8,10 +8,18 @@ from pydantic_evals.evaluators import (
 )
 
 from evals.order.models import (
+    ObservedToolUse,
     OrderEvalInput,
     OrderEvalMetadata,
     OrderEvalOutput,
 )
+
+
+def _find_tool_uses(
+    tool_uses: tuple[ObservedToolUse, ...],
+    tool_name: str,
+) -> tuple[ObservedToolUse, ...]:
+    return tuple(tool_use for tool_use in tool_uses if tool_use.tool_name == tool_name)
 
 
 @dataclass(repr=False)
@@ -107,4 +115,138 @@ class ToolSelectionEvaluator(
                 forbidden_tool_names=forbidden_tool_names,
                 unexpected_tool_names=unexpected_tool_names,
             ),
+        }
+
+
+@dataclass(repr=False)
+class ToolArgumentsEvaluator(
+    Evaluator[
+        OrderEvalInput,
+        OrderEvalOutput,
+        OrderEvalMetadata,
+    ]
+):
+    def evaluate(
+        self,
+        ctx: EvaluatorContext[
+            OrderEvalInput,
+            OrderEvalOutput,
+            OrderEvalMetadata,
+        ],
+    ) -> dict[str, EvaluationReason]:
+        metadata = ctx.metadata
+
+        if metadata is None:
+            raise ValueError("Order evaluation metadata is required.")
+
+        issues: list[str] = []
+
+        for expected_tool_use in metadata.required_tool_uses:
+            matching_tool_uses = _find_tool_uses(
+                ctx.output.tool_uses,
+                expected_tool_use.tool_name,
+            )
+
+            if not matching_tool_uses:
+                issues.append(
+                    "Missing Tool observations for argument evaluation: "
+                    f"{expected_tool_use.tool_name}."
+                )
+                continue
+
+            for observed_tool_use in matching_tool_uses:
+                actual_arguments = observed_tool_use.arguments
+
+                if type(actual_arguments) is not dict:
+                    issues.append(
+                        f"Uninterpretable arguments for {expected_tool_use.tool_name}."
+                    )
+                    continue
+
+                missing_argument_names = tuple(
+                    argument_name
+                    for argument_name in expected_tool_use.expected_arguments
+                    if argument_name not in actual_arguments
+                )
+
+                mismatched_argument_names = tuple(
+                    argument_name
+                    for argument_name, expected_value in expected_tool_use.expected_arguments.items()
+                    if argument_name in actual_arguments
+                    and actual_arguments[argument_name] != expected_value
+                )
+
+                if missing_argument_names:
+                    issues.append(
+                        "Missing expected arguments for "
+                        f"{expected_tool_use.tool_name}: "
+                        f"{', '.join(missing_argument_names)}."
+                    )
+
+                if mismatched_argument_names:
+                    issues.append(
+                        "Mismatched expected arguments for "
+                        f"{expected_tool_use.tool_name}: "
+                        f"{', '.join(mismatched_argument_names)}."
+                    )
+
+        return {
+            "tool_arguments": EvaluationReason(
+                value=not issues,
+                reason=" ".join(issues) or None,
+            )
+        }
+
+
+@dataclass(repr=False)
+class ToolOutcomesEvaluator(
+    Evaluator[
+        OrderEvalInput,
+        OrderEvalOutput,
+        OrderEvalMetadata,
+    ]
+):
+    def evaluate(
+        self,
+        ctx: EvaluatorContext[
+            OrderEvalInput,
+            OrderEvalOutput,
+            OrderEvalMetadata,
+        ],
+    ) -> dict[str, EvaluationReason]:
+        metadata = ctx.metadata
+
+        if metadata is None:
+            raise ValueError("Order evaluation metadata is required.")
+
+        issues: list[str] = []
+
+        for expected_tool_use in metadata.required_tool_uses:
+            matching_tool_uses = _find_tool_uses(
+                ctx.output.tool_uses,
+                expected_tool_use.tool_name,
+            )
+
+            if not matching_tool_uses:
+                issues.append(
+                    "Missing Tool observations for outcome evaluation: "
+                    f"{expected_tool_use.tool_name}."
+                )
+                continue
+
+            for observed_tool_use in matching_tool_uses:
+                if observed_tool_use.outcome == expected_tool_use.expected_outcome:
+                    continue
+
+                issues.append(
+                    f"Tool outcome mismatch for {expected_tool_use.tool_name}: "
+                    f"expected {expected_tool_use.expected_outcome}; "
+                    f"observed {observed_tool_use.outcome}."
+                )
+
+        return {
+            "tool_outcomes": EvaluationReason(
+                value=not issues,
+                reason=" ".join(issues) or None,
+            )
         }
