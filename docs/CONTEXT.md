@@ -31,4 +31,12 @@ Conversation은 사용자와 Agent가 메시지를 주고받는 대화를 뜻합
 
 Tool은 Agent가 사용할 수 있도록 애플리케이션이 제공하는 호출 가능한 기능을 뜻합니다.
 
-**Avoid:** `Tool Call`, `Tool Result`
+## Evaluation
+
+Evaluation은 Evaluation Dataset의 각 case를 사용해 Agent를 실행하고, Evaluator가 그 결과를 정해진 기준에 따라 판정하는 과정입니다.
+
+## Trace
+
+Trace는 한 번의 Agent 실행에서 발생한 Model 호출과 Tool 실행 등의 관계와 순서를 span으로 표현한 구조화된 실행 기록을 뜻합니다.
+
+**Avoid:** `Log`, `Metric`
