@@ -3,89 +3,11 @@ from pathlib import Path
 import pytest
 from evals.order.dataset import load_order_dataset
 from evals.order.models import (
-    InformationSource,
-    InformationSourceExpectation,
+    ExpectedToolUse,
     OrderEvalInput,
     OrderEvalMetadata,
 )
 from pydantic import ValidationError
-
-
-@pytest.mark.parametrize(
-    ("source", "order_id"),
-    [
-        pytest.param("order", None, id="order-without-order-id"),
-        pytest.param("shipment", None, id="shipment-without-order-id"),
-        pytest.param(
-            "customer_orders",
-            "order-001",
-            id="customer-orders-with-order-id",
-        ),
-        pytest.param(
-            "cancellation_policy",
-            "order-001",
-            id="cancellation-policy-with-order-id",
-        ),
-    ],
-)
-def test_information_source_expectation_rejects_order_id_that_conflicts_with_source(
-    source: InformationSource,
-    order_id: str | None,
-) -> None:
-    with pytest.raises(ValidationError):
-        InformationSourceExpectation(
-            source=source,
-            order_id=order_id,
-            outcome="available",
-        )
-
-
-@pytest.mark.parametrize(
-    ("source", "order_id"),
-    [
-        pytest.param("customer_orders", None, id="customer-orders-without-order-id"),
-        pytest.param(
-            "cancellation_policy",
-            None,
-            id="cancellation-policy-without-order-id",
-        ),
-        pytest.param("order", "order-001", id="order-with-order-id"),
-        pytest.param("shipment", "order-001", id="shipment-with-order-id"),
-    ],
-)
-def test_information_source_expectation_accepts_order_id_that_matches_source(
-    source: InformationSource,
-    order_id: str | None,
-) -> None:
-    expectation = InformationSourceExpectation(
-        source=source, order_id=order_id, outcome="available"
-    )
-
-    assert expectation.source == source
-    assert expectation.order_id == order_id
-
-
-def test_order_eval_metadata_rejects_overlapping_required_and_forbidden_information_sources() -> (
-    None
-):
-    with pytest.raises(ValidationError):
-        OrderEvalMetadata(
-            scenario_id="scenario-3",
-            required_information_sources=frozenset(
-                {
-                    InformationSourceExpectation(
-                        source="shipment",
-                        order_id="order-002",
-                        outcome="available",
-                    )
-                }
-            ),
-            forbidden_information_sources=frozenset({"shipment"}),
-            required_response_criteria=("Report the verified shipment status.",),
-            forbidden_response_criteria=(
-                "Do not report an unverified shipment status.",
-            ),
-        )
 
 
 @pytest.mark.parametrize(
@@ -110,16 +32,9 @@ def test_order_eval_metadata_rejects_empty_response_criterion(
     with pytest.raises(ValidationError):
         OrderEvalMetadata(
             scenario_id="scenario-3",
-            required_information_sources=frozenset(
-                {
-                    InformationSourceExpectation(
-                        source="shipment",
-                        order_id="order-002",
-                        outcome="available",
-                    )
-                }
-            ),
-            forbidden_information_sources=frozenset({"customer_orders"}),
+            required_tool_uses=(),
+            forbidden_tools=frozenset(),
+            required_tool_sequence=(),
             required_response_criteria=required_response_criteria,
             forbidden_response_criteria=forbidden_response_criteria,
         )
@@ -159,6 +74,148 @@ def test_load_order_dataset_returns_fresh_dataset_after_previous_load_is_modifie
     assert reloaded.cases == baseline.cases
 
 
-def test_information_source_expectation_rejects_empty_order_id() -> None:
-    with pytest.raises(ValidationError):
-        InformationSourceExpectation(source="order", order_id="", outcome="available")
+def test_expected_tool_use_preserves_tool_name_arguments_and_outcome() -> None:
+    expected_tool_use = ExpectedToolUse(
+        tool_name="find_order",
+        expected_arguments={"order_id": "order-002"},
+        expected_outcome="success",
+    )
+
+    assert (
+        expected_tool_use.tool_name,
+        expected_tool_use.expected_arguments,
+        expected_tool_use.expected_outcome,
+    ) == (
+        "find_order",
+        {"order_id": "order-002"},
+        "success",
+    )
+
+
+def test_order_eval_metadata_preserves_tool_use_requirements() -> None:
+    required_tool_use = ExpectedToolUse(
+        tool_name="lookup_subject",
+        expected_arguments={"subject_id": "subject-001"},
+        expected_outcome="success",
+    )
+
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_tool_uses=(required_tool_use,),
+        forbidden_tools=frozenset({"lookup_unrelated"}),
+        required_tool_sequence=(),
+        required_response_criteria=("State the verified result.",),
+        forbidden_response_criteria=("Do not state unverified facts.",),
+    )
+
+    assert (
+        metadata.required_tool_uses,
+        metadata.forbidden_tools,
+        metadata.required_tool_sequence,
+    ) == (
+        (required_tool_use,),
+        frozenset({"lookup_unrelated"}),
+        (),
+    )
+
+
+def test_order_eval_metadata_rejects_duplicate_required_tool_names() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="required tool names must be unique",
+    ):
+        OrderEvalMetadata(
+            scenario_id="scenario-1",
+            required_tool_uses=(
+                ExpectedToolUse(
+                    tool_name="lookup_subject",
+                    expected_arguments={"subject_id": "subject-001"},
+                    expected_outcome="success",
+                ),
+                ExpectedToolUse(
+                    tool_name="lookup_subject",
+                    expected_arguments={"subject_id": "subject-002"},
+                    expected_outcome="success",
+                ),
+            ),
+            forbidden_tools=frozenset(),
+            required_tool_sequence=(),
+            required_response_criteria=("State the verified result.",),
+            forbidden_response_criteria=("Do not state unverified facts.",),
+        )
+
+
+def test_order_eval_metadata_rejects_overlapping_required_and_forbidden_tools() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="required and forbidden tools must not overlap",
+    ):
+        OrderEvalMetadata(
+            scenario_id="scenario-1",
+            required_tool_uses=(
+                ExpectedToolUse(
+                    tool_name="lookup_subject",
+                    expected_arguments={"subject_id": "subject-001"},
+                    expected_outcome="success",
+                ),
+            ),
+            forbidden_tools=frozenset({"lookup_subject"}),
+            required_tool_sequence=(),
+            required_response_criteria=("State the verified result.",),
+            forbidden_response_criteria=("Do not state unverified facts.",),
+        )
+
+
+def test_order_eval_metadata_rejects_sequence_that_references_non_required_tool() -> (
+    None
+):
+    with pytest.raises(
+        ValidationError,
+        match="required tool sequence must reference only required tools",
+    ):
+        OrderEvalMetadata(
+            scenario_id="scenario-1",
+            required_tool_uses=(
+                ExpectedToolUse(
+                    tool_name="lookup_subject",
+                    expected_arguments={"subject_id": "subject-001"},
+                    expected_outcome="success",
+                ),
+            ),
+            forbidden_tools=frozenset(),
+            required_tool_sequence=("lookup_subject", "lookup_detail"),
+            required_response_criteria=("State the verified result.",),
+            forbidden_response_criteria=("Do not state unverified facts.",),
+        )
+
+
+def test_order_eval_metadata_rejects_duplicate_tool_names_in_required_sequence() -> (
+    None
+):
+    with pytest.raises(
+        ValidationError,
+        match="required tool sequence must not contain duplicate tool names",
+    ):
+        OrderEvalMetadata(
+            scenario_id="scenario-1",
+            required_tool_uses=(
+                ExpectedToolUse(
+                    tool_name="lookup_subject",
+                    expected_arguments={"subject_id": "subject-001"},
+                    expected_outcome="success",
+                ),
+                ExpectedToolUse(
+                    tool_name="lookup_detail",
+                    expected_arguments={"subject_id": "subject-001"},
+                    expected_outcome="success",
+                ),
+            ),
+            forbidden_tools=frozenset(),
+            required_tool_sequence=(
+                "lookup_subject",
+                "lookup_detail",
+                "lookup_subject",
+            ),
+            required_response_criteria=("State the verified result.",),
+            forbidden_response_criteria=("Do not state unverified facts.",),
+        )
