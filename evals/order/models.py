@@ -7,9 +7,11 @@ from pydantic import (
     model_validator,
 )
 
+from customer_support_agent.agent import AgentResult
 from customer_support_agent.tools.errors import ToolErrorCode
 
 type ExpectedToolOutcome = Literal["success"] | ToolErrorCode
+type ObservedToolOutcome = ExpectedToolOutcome | Literal["uninterpretable"]
 
 type ScenarioId = Annotated[
     str,
@@ -36,6 +38,24 @@ class ExpectedToolUse(BaseModel):
     tool_name: str
     expected_arguments: dict[str, object]
     expected_outcome: ExpectedToolOutcome
+
+
+class ObservedToolUse(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+    )
+
+    tool_name: str
+    arguments: object
+    outcome: ObservedToolOutcome
+
+
+class OrderEvalOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    agent_result: AgentResult
+    tool_uses: tuple[ObservedToolUse, ...]
 
 
 class OrderEvalInput(BaseModel):
