@@ -22,6 +22,19 @@ def _find_tool_uses(
     return tuple(tool_use for tool_use in tool_uses if tool_use.tool_name == tool_name)
 
 
+def _filter_tool_names_for_trajectory(
+    tool_uses: tuple[ObservedToolUse, ...],
+    required_tool_sequence: tuple[str, ...],
+) -> tuple[str, ...]:
+    required_tool_names = set(required_tool_sequence)
+
+    return tuple(
+        tool_use.tool_name
+        for tool_use in tool_uses
+        if tool_use.tool_name in required_tool_names
+    )
+
+
 @dataclass(repr=False)
 class ToolSelectionEvaluator(
     Evaluator[
@@ -248,5 +261,53 @@ class ToolOutcomesEvaluator(
             "tool_outcomes": EvaluationReason(
                 value=not issues,
                 reason=" ".join(issues) or None,
+            )
+        }
+
+
+@dataclass(repr=False)
+class ToolTrajectoryEvaluator(
+    Evaluator[
+        OrderEvalInput,
+        OrderEvalOutput,
+        OrderEvalMetadata,
+    ]
+):
+    def evaluate(
+        self,
+        ctx: EvaluatorContext[
+            OrderEvalInput,
+            OrderEvalOutput,
+            OrderEvalMetadata,
+        ],
+    ) -> dict[str, EvaluationReason]:
+        metadata = ctx.metadata
+
+        if metadata is None:
+            raise ValueError("Order evaluation metadata is required.")
+
+        if not metadata.required_tool_sequence:
+            return {}
+
+        expected_tool_sequence = metadata.required_tool_sequence
+        actual_tool_sequence = _filter_tool_names_for_trajectory(
+            ctx.output.tool_uses,
+            expected_tool_sequence,
+        )
+
+        matches_expected_order = actual_tool_sequence == expected_tool_sequence
+
+        return {
+            "tool_trajectory": EvaluationReason(
+                value=matches_expected_order,
+                reason=(
+                    None
+                    if matches_expected_order
+                    else (
+                        "Incorrect Tool order: "
+                        f"expected {' -> '.join(expected_tool_sequence)}; "
+                        f"observed {' -> '.join(actual_tool_sequence)}."
+                    )
+                ),
             )
         }
