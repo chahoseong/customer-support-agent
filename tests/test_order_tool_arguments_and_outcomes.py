@@ -166,6 +166,45 @@ def test_tool_arguments_evaluator_reports_mismatched_argument_value() -> None:
     assert "order_id" in arguments.reason
 
 
+def test_tool_arguments_evaluator_omits_expected_and_observed_values_from_failure_reason() -> (
+    None
+):
+    expected_argument_value = "sensitive-expected-order-id"
+    observed_argument_value = "sensitive-observed-order-id"
+    metadata = OrderEvalMetadata(
+        scenario_id="scenario-1",
+        required_tool_uses=(
+            ExpectedToolUse(
+                tool_name="find_order",
+                expected_arguments={"order_id": expected_argument_value},
+                expected_outcome="success",
+            ),
+        ),
+        forbidden_tools=frozenset(),
+        required_tool_sequence=(),
+        required_response_criteria=(),
+        forbidden_response_criteria=(),
+    )
+    context = _create_evaluator_context(
+        metadata=metadata,
+        tool_uses=(
+            ObservedToolUse(
+                tool_name="find_order",
+                arguments={"order_id": observed_argument_value},
+                outcome="success",
+            ),
+        ),
+    )
+
+    result = ToolArgumentsEvaluator().evaluate(context)
+    arguments = result["tool_arguments"]
+
+    assert arguments.value is False
+    assert arguments.reason is not None
+    assert expected_argument_value not in arguments.reason
+    assert observed_argument_value not in arguments.reason
+
+
 def test_tool_arguments_evaluator_reports_uninterpretable_arguments_when_actual_is_not_dict() -> (
     None
 ):
