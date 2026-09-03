@@ -7,18 +7,9 @@ from pydantic import (
     model_validator,
 )
 
-type InformationSource = Literal[
-    "customer_orders",
-    "order",
-    "shipment",
-    "cancellation_policy",
-]
+from customer_support_agent.tools.errors import ToolErrorCode
 
-type InformationSourceOutcome = Literal[
-    "available",
-    "unavailable",
-    "execution_failed",
-]
+type ExpectedToolOutcome = Literal["success"] | ToolErrorCode
 
 type ScenarioId = Annotated[
     str,
@@ -35,7 +26,16 @@ type ExecutionCondition = Literal[
     "shipment_information_failure",
 ]
 
-type OrderId = Annotated[str, Field(strict=True, min_length=1)]
+
+class ExpectedToolUse(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+    )
+
+    tool_name: str
+    expected_arguments: dict[str, object]
+    expected_outcome: ExpectedToolOutcome
 
 
 class OrderEvalInput(BaseModel):
@@ -49,29 +49,6 @@ class OrderEvalInput(BaseModel):
     execution_condition: ExecutionCondition
 
 
-class InformationSourceExpectation(BaseModel):
-    model_config = ConfigDict(
-        frozen=True,
-        extra="forbid",
-    )
-
-    source: InformationSource
-    order_id: OrderId | None = None
-    outcome: InformationSourceOutcome
-
-    @model_validator(mode="after")
-    def validate_order_id_matches_source(self) -> Self:
-        requires_order_id = self.source in {"order", "shipment"}
-        has_order_id = self.order_id is not None
-
-        if requires_order_id != has_order_id:
-            raise ValueError(
-                "order_id is required only for order and shipment information sources"
-            )
-
-        return self
-
-
 class OrderEvalMetadata(BaseModel):
     model_config = ConfigDict(
         frozen=True,
@@ -79,20 +56,52 @@ class OrderEvalMetadata(BaseModel):
     )
 
     scenario_id: ScenarioId
-    required_information_sources: frozenset[InformationSourceExpectation]
-    forbidden_information_sources: frozenset[InformationSource]
+    required_tool_uses: tuple[ExpectedToolUse, ...]
+    forbidden_tools: frozenset[str]
+    required_tool_sequence: tuple[str, ...]
     required_response_criteria: tuple[ResponseCriterion, ...]
     forbidden_response_criteria: tuple[ResponseCriterion, ...]
 
     @model_validator(mode="after")
-    def validate_information_sources_do_not_overlap(self) -> Self:
-        required_source_types = {
-            expectation.source for expectation in self.required_information_sources
+    def validate_required_tool_names_are_unique(self) -> Self:
+        required_tool_names = [
+            tool_use.tool_name for tool_use in self.required_tool_uses
+        ]
+
+        if len(required_tool_names) != len(set(required_tool_names)):
+            raise ValueError("required tool names must be unique")
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_required_and_forbidden_tools_do_not_overlap(self) -> Self:
+        required_tool_names = {
+            tool_use.tool_name for tool_use in self.required_tool_uses
         }
 
-        if not required_source_types.isdisjoint(self.forbidden_information_sources):
+        if not required_tool_names.isdisjoint(self.forbidden_tools):
+            raise ValueError("required and forbidden tools must not overlap")
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_required_tool_sequence_references_only_required_tools(self) -> Self:
+        required_tool_names = {
+            tool_use.tool_name for tool_use in self.required_tool_uses
+        }
+
+        if not set(self.required_tool_sequence).issubset(required_tool_names):
             raise ValueError(
-                "required and forbidden information sources must not overlap"
+                "required tool sequence must reference only required tools"
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_required_tool_sequence_names_are_unique(self) -> Self:
+        if len(self.required_tool_sequence) != len(set(self.required_tool_sequence)):
+            raise ValueError(
+                "required tool sequence must not contain duplicate tool names"
             )
 
         return self

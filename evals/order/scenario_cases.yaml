@@ -7,14 +7,16 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-1
-      required_information_sources:
-        - source: order
-          order_id: order-003
-          outcome: available
-      forbidden_information_sources:
-        - customer_orders
-        - shipment
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-003
+          expected_outcome: success
+      forbidden_tools:
+        - get_customer_orders
+        - find_shipment
+        - get_cancellation_policy
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the order status is delivered.
         - The response identifies the order as order-003.
@@ -30,14 +32,16 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-2
-      required_information_sources:
-        - source: order
-          order_id: order-001
-          outcome: available
-      forbidden_information_sources:
-        - customer_orders
-        - shipment
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-001
+          expected_outcome: success
+      forbidden_tools:
+        - get_customer_orders
+        - find_shipment
+        - get_cancellation_policy
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the order status is processing.
         - The response states that order-001 has not yet been handed off to a carrier.
@@ -55,16 +59,21 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-3
-      required_information_sources:
-        - source: order
-          order_id: order-002
-          outcome: available
-        - source: shipment
-          order_id: order-002
-          outcome: available
-      forbidden_information_sources:
-        - customer_orders
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-002
+          expected_outcome: success
+        - tool_name: find_shipment
+          expected_arguments:
+            order_id: order-002
+          expected_outcome: success
+      forbidden_tools:
+        - get_customer_orders
+        - get_cancellation_policy
+      required_tool_sequence:
+        - find_order
+        - find_shipment
       required_response_criteria:
         - The response states that the order status is shipped.
         - The response states that the shipment status is out_for_delivery.
@@ -82,15 +91,18 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-4
-      required_information_sources:
-        - source: order
-          order_id: order-001
-          outcome: available
-        - source: cancellation_policy
-          outcome: available
-      forbidden_information_sources:
-        - customer_orders
-        - shipment
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-001
+          expected_outcome: success
+        - tool_name: get_cancellation_policy
+          expected_arguments: {}
+          expected_outcome: success
+      forbidden_tools:
+        - get_customer_orders
+        - find_shipment
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the order status is processing.
         - The response states that the cancellation policy permits cancellation while an order is processing.
@@ -106,15 +118,18 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-5
-      required_information_sources:
-        - source: order
-          order_id: order-002
-          outcome: available
-        - source: cancellation_policy
-          outcome: available
-      forbidden_information_sources:
-        - customer_orders
-        - shipment
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-002
+          expected_outcome: success
+        - tool_name: get_cancellation_policy
+          expected_arguments: {}
+          expected_outcome: success
+      forbidden_tools:
+        - get_customer_orders
+        - find_shipment
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the order status is shipped.
         - The response states that the cancellation policy permits cancellation only while an order is processing.
@@ -131,13 +146,15 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-6
-      required_information_sources:
-        - source: customer_orders
-          outcome: available
-      forbidden_information_sources:
-        - order
-        - shipment
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: get_customer_orders
+          expected_arguments: {}
+          expected_outcome: success
+      forbidden_tools:
+        - find_order
+        - find_shipment
+        - get_cancellation_policy
+      required_tool_sequence: []
       required_response_criteria:
         - The response presents order-001, order-002, and order-003 as the available order candidates.
         - The response asks the customer to select an order.
@@ -154,13 +171,15 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-7
-      required_information_sources:
-        - source: customer_orders
-          outcome: available
-      forbidden_information_sources:
-        - order
-        - shipment
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: get_customer_orders
+          expected_arguments: {}
+          expected_outcome: success
+      forbidden_tools:
+        - find_order
+        - find_shipment
+        - get_cancellation_policy
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the available information cannot identify the most recent order.
         - The response presents order-001, order-002, and order-003 as the available order candidates.
@@ -176,14 +195,16 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-8
-      required_information_sources:
-        - source: order
-          order_id: order-999
-          outcome: unavailable
-      forbidden_information_sources:
-        - customer_orders
-        - shipment
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-999
+          expected_outcome: order_not_found
+      forbidden_tools:
+        - get_customer_orders
+        - find_shipment
+        - get_cancellation_policy
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the requested order cannot be found in the current customer context.
       forbidden_response_criteria:
@@ -198,14 +219,16 @@ cases:
       execution_condition: default
     metadata:
       scenario_id: scenario-8
-      required_information_sources:
-        - source: order
-          order_id: order-004
-          outcome: unavailable
-      forbidden_information_sources:
-        - customer_orders
-        - shipment
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-004
+          expected_outcome: order_not_found
+      forbidden_tools:
+        - get_customer_orders
+        - find_shipment
+        - get_cancellation_policy
+      required_tool_sequence: []
       required_response_criteria:
         - The response states that the requested order cannot be found in the current customer context.
       forbidden_response_criteria:
@@ -220,16 +243,21 @@ cases:
       execution_condition: shipment_information_failure
     metadata:
       scenario_id: scenario-9
-      required_information_sources:
-        - source: order
-          order_id: order-002
-          outcome: available
-        - source: shipment
-          order_id: order-002
-          outcome: execution_failed
-      forbidden_information_sources:
-        - customer_orders
-        - cancellation_policy
+      required_tool_uses:
+        - tool_name: find_order
+          expected_arguments:
+            order_id: order-002
+          expected_outcome: success
+        - tool_name: find_shipment
+          expected_arguments:
+            order_id: order-002
+          expected_outcome: tool_execution_failed
+      forbidden_tools:
+        - get_customer_orders
+        - get_cancellation_policy
+      required_tool_sequence:
+        - find_order
+        - find_shipment
       required_response_criteria:
         - The response states that the confirmed order status is shipped.
         - The response states that the detailed shipment progress could not be confirmed.
