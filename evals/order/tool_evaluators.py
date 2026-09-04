@@ -1,3 +1,5 @@
+"""Deterministic evaluators for Agent Tool usage."""
+
 from collections import Counter
 from dataclasses import dataclass
 

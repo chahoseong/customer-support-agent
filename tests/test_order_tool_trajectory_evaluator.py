@@ -1,4 +1,3 @@
-from evals.order.evaluators import ToolTrajectoryEvaluator
 from evals.order.models import (
     ExpectedToolUse,
     ObservedToolUse,
@@ -6,6 +5,7 @@ from evals.order.models import (
     OrderEvalMetadata,
     OrderEvalOutput,
 )
+from evals.order.tool_evaluators import ToolTrajectoryEvaluator
 from pydantic_evals.evaluators import (
     EvaluationReason,
     EvaluatorContext,

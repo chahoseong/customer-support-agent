@@ -1,20 +1,26 @@
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from evals.order.dataset import load_order_dataset
-from evals.order.evaluators import (
-    ToolArgumentsEvaluator,
-    ToolOutcomesEvaluator,
-    ToolSelectionEvaluator,
-    ToolTrajectoryEvaluator,
-)
 from evals.order.models import (
     ExpectedToolUse,
     OrderEvalInput,
     OrderEvalMetadata,
     ResponseCriterion,
 )
+from evals.order.response_evaluator import ResponseCriterionEvaluator
+from evals.order.tool_evaluators import (
+    ToolArgumentsEvaluator,
+    ToolOutcomesEvaluator,
+    ToolSelectionEvaluator,
+    ToolTrajectoryEvaluator,
+)
 from pydantic import ValidationError
+from pydantic_ai.models import Model
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.settings import ModelSettings
 
 
 def test_load_order_dataset_returns_typed_cases_when_working_directory_differs(
@@ -23,7 +29,7 @@ def test_load_order_dataset_returns_typed_cases_when_working_directory_differs(
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    dataset = load_order_dataset()
+    dataset = load_order_dataset(judge_model=TestModel())
 
     assert dataset.name == "order_scenarios"
     assert dataset.cases
@@ -34,8 +40,9 @@ def test_load_order_dataset_returns_typed_cases_when_working_directory_differs(
 def test_load_order_dataset_returns_fresh_dataset_after_previous_load_is_modified() -> (
     None
 ):
-    baseline = load_order_dataset()
-    modified = load_order_dataset()
+    judge_model = TestModel()
+    baseline = load_order_dataset(judge_model=judge_model)
+    modified = load_order_dataset(judge_model=judge_model)
     source_case = modified.cases[0]
 
     modified.add_case(
@@ -44,7 +51,7 @@ def test_load_order_dataset_returns_fresh_dataset_after_previous_load_is_modifie
         metadata=source_case.metadata,
     )
 
-    reloaded = load_order_dataset()
+    reloaded = load_order_dataset(judge_model=judge_model)
 
     assert len(modified.cases) == len(baseline.cases) + 1
     assert modified is not reloaded
@@ -290,7 +297,7 @@ def test_order_eval_metadata_rejects_duplicate_tool_names_in_required_sequence()
 
 
 def test_load_order_dataset_returns_all_tool_evaluators_in_stable_order() -> None:
-    dataset = load_order_dataset()
+    dataset = load_order_dataset(judge_model=TestModel())
 
     assert tuple(type(evaluator) for evaluator in dataset.evaluators) == (
         ToolSelectionEvaluator,
@@ -301,14 +308,115 @@ def test_load_order_dataset_returns_all_tool_evaluators_in_stable_order() -> Non
 
 
 def test_load_order_dataset_returns_fresh_tool_evaluator_instances() -> None:
-    first_dataset = load_order_dataset()
-    second_dataset = load_order_dataset()
+    judge_model = TestModel()
+    first_dataset = load_order_dataset(judge_model=judge_model)
+    second_dataset = load_order_dataset(judge_model=judge_model)
 
     assert all(
         first_evaluator is not second_evaluator
         for first_evaluator, second_evaluator in zip(
             first_dataset.evaluators,
             second_dataset.evaluators,
+            strict=True,
+        )
+    )
+
+
+def test_load_order_dataset_attaches_response_evaluator_for_each_response_criterion() -> (
+    None
+):
+    judge_model = TestModel()
+
+    dataset = load_order_dataset(judge_model=judge_model)
+
+    for case in dataset.cases:
+        assert case.metadata is not None
+
+        expected_evaluator_names = {
+            *(
+                f"response_required_{criterion.id}"
+                for criterion in case.metadata.required_response_criteria
+            ),
+            *(
+                f"response_forbidden_{criterion.id}"
+                for criterion in case.metadata.forbidden_response_criteria
+            ),
+        }
+        response_evaluators = [
+            evaluator
+            for evaluator in case.evaluators
+            if isinstance(evaluator, ResponseCriterionEvaluator)
+        ]
+
+        assert len(response_evaluators) == len(expected_evaluator_names)
+        assert {
+            evaluator.get_default_evaluation_name() for evaluator in response_evaluators
+        } == expected_evaluator_names
+        assert all(
+            evaluator.judge_model is judge_model for evaluator in response_evaluators
+        )
+
+
+def test_load_order_dataset_rejects_missing_judge_model() -> None:
+    load_without_arguments = cast(Callable[[], object], load_order_dataset)
+
+    with pytest.raises(TypeError, match=r"judge_model"):
+        load_without_arguments()
+
+
+def test_load_order_dataset_rejects_none_judge_model() -> None:
+    with pytest.raises(ValueError, match=r"Judge model is required\."):
+        load_order_dataset(judge_model=cast(Model, None))
+
+
+def test_load_order_dataset_passes_judge_model_settings_to_response_evaluators() -> (
+    None
+):
+    judge_model_settings = ModelSettings(temperature=0.0)
+
+    dataset = load_order_dataset(
+        judge_model=TestModel(),
+        judge_model_settings=judge_model_settings,
+    )
+
+    response_evaluators = [
+        evaluator
+        for case in dataset.cases
+        for evaluator in case.evaluators
+        if isinstance(evaluator, ResponseCriterionEvaluator)
+    ]
+
+    assert response_evaluators
+    assert all(
+        evaluator.judge_model_settings == judge_model_settings
+        for evaluator in response_evaluators
+    )
+
+
+def test_load_order_dataset_returns_fresh_response_evaluator_instances() -> None:
+    judge_model = TestModel()
+    first_dataset = load_order_dataset(judge_model=judge_model)
+    second_dataset = load_order_dataset(judge_model=judge_model)
+
+    first_response_evaluators = [
+        evaluator
+        for case in first_dataset.cases
+        for evaluator in case.evaluators
+        if isinstance(evaluator, ResponseCriterionEvaluator)
+    ]
+    second_response_evaluators = [
+        evaluator
+        for case in second_dataset.cases
+        for evaluator in case.evaluators
+        if isinstance(evaluator, ResponseCriterionEvaluator)
+    ]
+
+    assert len(first_response_evaluators) == len(second_response_evaluators)
+    assert all(
+        first_evaluator is not second_evaluator
+        for first_evaluator, second_evaluator in zip(
+            first_response_evaluators,
+            second_response_evaluators,
             strict=True,
         )
     )
