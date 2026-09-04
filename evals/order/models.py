@@ -18,15 +18,31 @@ type ScenarioId = Annotated[
     Field(strict=True, pattern=r"^scenario-[1-9][0-9]*$"),
 ]
 
-type ResponseCriterion = Annotated[
+type ResponseCriterionId = Annotated[
     str,
-    Field(strict=True, min_length=1),
+    Field(
+        strict=True,
+        pattern=r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+    ),
 ]
 
 type ExecutionCondition = Literal[
     "default",
     "shipment_information_failure",
 ]
+
+
+class ResponseCriterion(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+    )
+
+    id: ResponseCriterionId
+    statement: Annotated[
+        str,
+        Field(strict=True, min_length=1),
+    ]
 
 
 class ExpectedToolUse(BaseModel):
@@ -123,5 +139,21 @@ class OrderEvalMetadata(BaseModel):
             raise ValueError(
                 "required tool sequence must not contain duplicate tool names"
             )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_response_criterion_ids_are_unique(self) -> Self:
+        criterion_ids = [
+            criterion.id
+            for criteria in (
+                self.required_response_criteria,
+                self.forbidden_response_criteria,
+            )
+            for criterion in criteria
+        ]
+
+        if len(criterion_ids) != len(set(criterion_ids)):
+            raise ValueError("response criterion ids must be unique")
 
         return self
