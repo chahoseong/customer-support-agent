@@ -1,5 +1,5 @@
 import asyncio
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 from evals.order.models import (
@@ -23,6 +23,7 @@ from customer_support_agent.agent import AgentResult
 def _create_response_evaluator_context(
     *,
     criterion: ResponseCriterion,
+    criterion_kind: Literal["required", "forbidden"],
     response: str,
 ) -> EvaluatorContext[
     OrderEvalInput,
@@ -34,7 +35,7 @@ def _create_response_evaluator_context(
         OrderEvalOutput,
         OrderEvalMetadata,
     ](
-        name="required-response-criterion",
+        name=f"{criterion_kind}-response-criterion",
         inputs=OrderEvalInput(
             user_message="What is the status of order-003?",
             customer_id="customer-001",
@@ -45,8 +46,12 @@ def _create_response_evaluator_context(
             required_tool_uses=(),
             forbidden_tools=frozenset(),
             required_tool_sequence=(),
-            required_response_criteria=(criterion,),
-            forbidden_response_criteria=(),
+            required_response_criteria=(
+                (criterion,) if criterion_kind == "required" else ()
+            ),
+            forbidden_response_criteria=(
+                (criterion,) if criterion_kind == "forbidden" else ()
+            ),
         ),
         expected_output=None,
         output=OrderEvalOutput(
@@ -71,6 +76,7 @@ def test_response_criterion_evaluator_returns_judge_assertion_and_reason_for_req
     )
     context = _create_response_evaluator_context(
         criterion=criterion,
+        criterion_kind="required",
         response="Order-003 has been delivered.",
     )
     evaluator = ResponseCriterionEvaluator(
@@ -102,6 +108,7 @@ def test_response_criterion_evaluator_returns_failed_assertion_when_required_cri
     )
     context = _create_response_evaluator_context(
         criterion=criterion,
+        criterion_kind="required",
         response="Order-003 is still processing.",
     )
     evaluator = ResponseCriterionEvaluator(
@@ -124,6 +131,70 @@ def test_response_criterion_evaluator_returns_failed_assertion_when_required_cri
     )
 
 
+def test_response_criterion_evaluator_returns_failed_assertion_when_forbidden_criterion_is_present() -> (
+    None
+):
+    criterion = ResponseCriterion(
+        id="states_tracking_number",
+        statement="The response states a tracking number.",
+    )
+    context = _create_response_evaluator_context(
+        criterion=criterion,
+        criterion_kind="forbidden",
+        response="The tracking number is tracking-002.",
+    )
+    evaluator = ResponseCriterionEvaluator(
+        criterion=criterion,
+        criterion_kind="forbidden",
+        judge_model=TestModel(
+            custom_output_args={
+                "reason": "The response includes a tracking number.",
+                "pass": True,
+                "score": 1.0,
+            }
+        ),
+    )
+
+    result = asyncio.run(evaluator.evaluate(context))
+
+    assert result == EvaluationReason(
+        value=False,
+        reason="The response includes a tracking number.",
+    )
+
+
+def test_response_criterion_evaluator_returns_passed_assertion_when_forbidden_criterion_is_absent() -> (
+    None
+):
+    criterion = ResponseCriterion(
+        id="states_tracking_number",
+        statement="The response states a tracking number.",
+    )
+    context = _create_response_evaluator_context(
+        criterion=criterion,
+        criterion_kind="forbidden",
+        response="Order-002 is on its way.",
+    )
+    evaluator = ResponseCriterionEvaluator(
+        criterion=criterion,
+        criterion_kind="forbidden",
+        judge_model=TestModel(
+            custom_output_args={
+                "reason": "The response does not include a tracking number.",
+                "pass": False,
+                "score": 0.0,
+            }
+        ),
+    )
+
+    result = asyncio.run(evaluator.evaluate(context))
+
+    assert result == EvaluationReason(
+        value=True,
+        reason="The response does not include a tracking number.",
+    )
+
+
 def test_response_criterion_evaluator_returns_stable_name_for_required_criterion() -> (
     None
 ):
@@ -140,6 +211,24 @@ def test_response_criterion_evaluator_returns_stable_name_for_required_criterion
     result = evaluator.get_default_evaluation_name()
 
     assert result == "response_required_states_order_status_delivered"
+
+
+def test_response_criterion_evaluator_returns_stable_name_for_forbidden_criterion() -> (
+    None
+):
+    criterion = ResponseCriterion(
+        id="states_tracking_number",
+        statement="The response states a tracking number.",
+    )
+    evaluator = ResponseCriterionEvaluator(
+        criterion=criterion,
+        criterion_kind="forbidden",
+        judge_model=TestModel(),
+    )
+
+    result = evaluator.get_default_evaluation_name()
+
+    assert result == "response_forbidden_states_tracking_number"
 
 
 def test_response_criterion_evaluator_rejects_missing_judge_model() -> None:

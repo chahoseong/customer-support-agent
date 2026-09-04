@@ -27,7 +27,7 @@ class ResponseCriterionEvaluator(
     ]
 ):
     criterion: ResponseCriterion
-    criterion_kind: Literal["required"]
+    criterion_kind: Literal["required", "forbidden"]
     judge_model: Model | KnownModelName | str
     judge_model_settings: ModelSettings | None = None
 
@@ -54,7 +54,11 @@ class ResponseCriterionEvaluator(
             model_settings=self.judge_model_settings,
         )
 
+        criterion_is_satisfied = (
+            grading.pass_ if self.criterion_kind == "required" else not grading.pass_
+        )
+
         return EvaluationReason(
-            value=grading.pass_,
+            value=criterion_is_satisfied,
             reason=grading.reason,
         )
