@@ -1,8 +1,4 @@
 import pytest
-from evals.order.evaluators import (
-    ToolArgumentsEvaluator,
-    ToolOutcomesEvaluator,
-)
 from evals.order.models import (
     ExpectedToolOutcome,
     ExpectedToolUse,
@@ -11,6 +7,10 @@ from evals.order.models import (
     OrderEvalInput,
     OrderEvalMetadata,
     OrderEvalOutput,
+)
+from evals.order.tool_evaluators import (
+    ToolArgumentsEvaluator,
+    ToolOutcomesEvaluator,
 )
 from pydantic_evals.evaluators import (
     EvaluationReason,
