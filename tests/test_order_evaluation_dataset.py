@@ -12,38 +12,9 @@ from evals.order.models import (
     ExpectedToolUse,
     OrderEvalInput,
     OrderEvalMetadata,
+    ResponseCriterion,
 )
 from pydantic import ValidationError
-
-
-@pytest.mark.parametrize(
-    ("required_response_criteria", "forbidden_response_criteria"),
-    [
-        pytest.param(
-            ("",),
-            ("Do not report an unverified shipment status.",),
-            id="empty-required-response-criterion",
-        ),
-        pytest.param(
-            ("Report the verified shipment status.",),
-            ("",),
-            id="empty-forbidden-response-criterion",
-        ),
-    ],
-)
-def test_order_eval_metadata_rejects_empty_response_criterion(
-    required_response_criteria: tuple[str, ...],
-    forbidden_response_criteria: tuple[str, ...],
-) -> None:
-    with pytest.raises(ValidationError):
-        OrderEvalMetadata(
-            scenario_id="scenario-3",
-            required_tool_uses=(),
-            forbidden_tools=frozenset(),
-            required_tool_sequence=(),
-            required_response_criteria=required_response_criteria,
-            forbidden_response_criteria=forbidden_response_criteria,
-        )
 
 
 def test_load_order_dataset_returns_typed_cases_when_working_directory_differs(
@@ -80,6 +51,97 @@ def test_load_order_dataset_returns_fresh_dataset_after_previous_load_is_modifie
     assert reloaded.cases == baseline.cases
 
 
+def test_response_criterion_preserves_id_and_statement() -> None:
+    criterion = ResponseCriterion(
+        id="reports_verified_shipment_status",
+        statement="The response reports the verified shipment status.",
+    )
+
+    assert (
+        criterion.id,
+        criterion.statement,
+    ) == (
+        "reports_verified_shipment_status",
+        "The response reports the verified shipment status.",
+    )
+
+
+@pytest.mark.parametrize(
+    "criterion_id",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("ReportsStatus", id="uppercase"),
+        pytest.param("reports-status", id="hyphen"),
+    ],
+)
+def test_response_criterion_rejects_invalid_id(criterion_id: str) -> None:
+    with pytest.raises(ValidationError):
+        ResponseCriterion(
+            id=criterion_id,
+            statement="The response reports the verified shipment status.",
+        )
+
+
+def test_response_criterion_rejects_empty_statement() -> None:
+    with pytest.raises(ValidationError):
+        ResponseCriterion(
+            id="reports_verified_shipment_status",
+            statement="",
+        )
+
+
+@pytest.mark.parametrize(
+    ("required_response_criteria", "forbidden_response_criteria"),
+    [
+        pytest.param(
+            (
+                ResponseCriterion(
+                    id="reports_order_status",
+                    statement="The response reports the order status.",
+                ),
+                ResponseCriterion(
+                    id="reports_order_status",
+                    statement="The response explains the order status.",
+                ),
+            ),
+            (),
+            id="within-required",
+        ),
+        pytest.param(
+            (
+                ResponseCriterion(
+                    id="reports_order_status",
+                    statement="The response reports the order status.",
+                ),
+            ),
+            (
+                ResponseCriterion(
+                    id="reports_order_status",
+                    statement="The response reports an unverified order status.",
+                ),
+            ),
+            id="across-required-and-forbidden",
+        ),
+    ],
+)
+def test_order_eval_metadata_rejects_duplicate_response_criterion_ids(
+    required_response_criteria: tuple[ResponseCriterion, ...],
+    forbidden_response_criteria: tuple[ResponseCriterion, ...],
+) -> None:
+    with pytest.raises(
+        ValidationError,
+        match="response criterion ids must be unique",
+    ):
+        OrderEvalMetadata(
+            scenario_id="scenario-1",
+            required_tool_uses=(),
+            forbidden_tools=frozenset(),
+            required_tool_sequence=(),
+            required_response_criteria=required_response_criteria,
+            forbidden_response_criteria=forbidden_response_criteria,
+        )
+
+
 def test_expected_tool_use_preserves_tool_name_arguments_and_outcome() -> None:
     expected_tool_use = ExpectedToolUse(
         tool_name="find_order",
@@ -110,8 +172,8 @@ def test_order_eval_metadata_preserves_tool_use_requirements() -> None:
         required_tool_uses=(required_tool_use,),
         forbidden_tools=frozenset({"lookup_unrelated"}),
         required_tool_sequence=(),
-        required_response_criteria=("State the verified result.",),
-        forbidden_response_criteria=("Do not state unverified facts.",),
+        required_response_criteria=(),
+        forbidden_response_criteria=(),
     )
 
     assert (
@@ -146,8 +208,8 @@ def test_order_eval_metadata_rejects_duplicate_required_tool_names() -> None:
             ),
             forbidden_tools=frozenset(),
             required_tool_sequence=(),
-            required_response_criteria=("State the verified result.",),
-            forbidden_response_criteria=("Do not state unverified facts.",),
+            required_response_criteria=(),
+            forbidden_response_criteria=(),
         )
 
 
@@ -167,8 +229,8 @@ def test_order_eval_metadata_rejects_overlapping_required_and_forbidden_tools() 
             ),
             forbidden_tools=frozenset({"lookup_subject"}),
             required_tool_sequence=(),
-            required_response_criteria=("State the verified result.",),
-            forbidden_response_criteria=("Do not state unverified facts.",),
+            required_response_criteria=(),
+            forbidden_response_criteria=(),
         )
 
 
@@ -190,8 +252,8 @@ def test_order_eval_metadata_rejects_sequence_that_references_non_required_tool(
             ),
             forbidden_tools=frozenset(),
             required_tool_sequence=("lookup_subject", "lookup_detail"),
-            required_response_criteria=("State the verified result.",),
-            forbidden_response_criteria=("Do not state unverified facts.",),
+            required_response_criteria=(),
+            forbidden_response_criteria=(),
         )
 
 
@@ -222,8 +284,8 @@ def test_order_eval_metadata_rejects_duplicate_tool_names_in_required_sequence()
                 "lookup_detail",
                 "lookup_subject",
             ),
-            required_response_criteria=("State the verified result.",),
-            forbidden_response_criteria=("Do not state unverified facts.",),
+            required_response_criteria=(),
+            forbidden_response_criteria=(),
         )
 
 

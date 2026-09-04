@@ -18,12 +18,17 @@ cases:
         - get_cancellation_policy
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the order status is delivered.
-        - The response identifies the order as order-003.
+        - id: states_order_status_delivered
+          statement: The response states that the order status is delivered.
+        - id: identifies_order_as_order_003
+          statement: The response identifies the order as order-003.
       forbidden_response_criteria:
-        - The response does not state unverified order facts.
-        - The response does not state shipment facts.
-        - The response does not state cancellation-policy facts.
+        - id: states_unverified_order_facts
+          statement: The response states unverified order facts.
+        - id: states_shipment_facts
+          statement: The response states shipment facts.
+        - id: states_cancellation_policy_facts
+          statement: The response states cancellation-policy facts.
 
   - name: shipment_before_carrier_handoff
     inputs:
@@ -43,14 +48,21 @@ cases:
         - get_cancellation_policy
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the order status is processing.
-        - The response states that order-001 has not yet been handed off to a carrier.
+        - id: states_order_status_processing
+          statement: The response states that the order status is processing.
+        - id: states_order_001_not_handed_off_to_carrier
+          statement: The response states that order-001 has not yet been handed off to a carrier.
       forbidden_response_criteria:
-        - The response does not state a carrier name.
-        - The response does not state an unverified detailed shipment status.
-        - The response does not state a shipment location.
-        - The response does not state an estimated delivery date.
-        - The response does not claim that shipment information was retrieved.
+        - id: states_carrier_name
+          statement: The response states a carrier name.
+        - id: states_unverified_detailed_shipment_status
+          statement: The response states an unverified detailed shipment status.
+        - id: states_shipment_location
+          statement: The response states a shipment location.
+        - id: states_estimated_delivery_date
+          statement: The response states an estimated delivery date.
+        - id: claims_shipment_information_retrieved
+          statement: The response claims that shipment information was retrieved.
 
   - name: shipment_after_carrier_handoff
     inputs:
@@ -75,14 +87,21 @@ cases:
         - find_order
         - find_shipment
       required_response_criteria:
-        - The response states that the order status is shipped.
-        - The response states that the shipment status is out_for_delivery.
-        - The response distinguishes the order status from the shipment status.
+        - id: states_order_status_shipped
+          statement: The response states that the order status is shipped.
+        - id: states_shipment_status_out_for_delivery
+          statement: The response states that the shipment status is out_for_delivery.
+        - id: distinguishes_order_status_from_shipment_status
+          statement: The response distinguishes the order status from the shipment status.
       forbidden_response_criteria:
-        - The response does not state a carrier name.
-        - The response does not state a shipment location.
-        - The response does not state a tracking number.
-        - The response does not state an estimated delivery date.
+        - id: states_carrier_name
+          statement: The response states a carrier name.
+        - id: states_shipment_location
+          statement: The response states a shipment location.
+        - id: states_tracking_number
+          statement: The response states a tracking number.
+        - id: states_estimated_delivery_date
+          statement: The response states an estimated delivery date.
 
   - name: cancellable_order
     inputs:
@@ -104,12 +123,17 @@ cases:
         - find_shipment
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the order status is processing.
-        - The response states that the cancellation policy permits cancellation while an order is processing.
-        - The response states that order-001 can be cancelled under the current policy.
+        - id: states_order_status_processing
+          statement: The response states that the order status is processing.
+        - id: states_policy_permits_cancellation_while_processing
+          statement: The response states that the cancellation policy permits cancellation while an order is processing.
+        - id: states_order_001_can_be_cancelled
+          statement: The response states that order-001 can be cancelled under the current policy.
       forbidden_response_criteria:
-        - The response does not claim that order-001 was cancelled.
-        - The response does not claim that a cancellation request was accepted or completed.
+        - id: claims_order_001_was_cancelled
+          statement: The response claims that order-001 was cancelled.
+        - id: claims_cancellation_request_was_accepted_or_completed
+          statement: The response claims that a cancellation request was accepted or completed.
 
   - name: non_cancellable_order
     inputs:
@@ -131,13 +155,19 @@ cases:
         - find_shipment
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the order status is shipped.
-        - The response states that the cancellation policy permits cancellation only while an order is processing.
-        - The response states that order-002 cannot be cancelled under the current policy.
+        - id: states_order_status_shipped
+          statement: The response states that the order status is shipped.
+        - id: states_policy_permits_cancellation_only_while_processing
+          statement: The response states that the cancellation policy permits cancellation only while an order is processing.
+        - id: states_order_002_cannot_be_cancelled
+          statement: The response states that order-002 cannot be cancelled under the current policy.
       forbidden_response_criteria:
-        - The response does not state an unverified detailed reason for the cancellation restriction.
-        - The response does not claim that order-002 was cancelled.
-        - The response does not claim that order-002 was modified.
+        - id: states_unverified_cancellation_restriction_reason
+          statement: The response states an unverified detailed reason for the cancellation restriction.
+        - id: claims_order_002_was_cancelled
+          statement: The response claims that order-002 was cancelled.
+        - id: claims_order_002_was_modified
+          statement: The response claims that order-002 was modified.
 
   - name: missing_order_identifier
     inputs:
@@ -156,13 +186,19 @@ cases:
         - get_cancellation_policy
       required_tool_sequence: []
       required_response_criteria:
-        - The response presents order-001, order-002, and order-003 as the available order candidates.
-        - The response asks the customer to select an order.
+        - id: presents_available_order_candidates
+          statement: The response presents order-001, order-002, and order-003 as the available order candidates.
+        - id: asks_customer_to_select_order
+          statement: The response asks the customer to select an order.
       forbidden_response_criteria:
-        - The response does not select an order for the customer.
-        - The response does not state product details for an order.
-        - The response does not state when an order was placed.
-        - The response does not state other unsupported identifying information for an order.
+        - id: selects_order_for_customer
+          statement: The response selects an order for the customer.
+        - id: states_order_product_details
+          statement: The response states product details for an order.
+        - id: states_order_placement_time
+          statement: The response states when an order was placed.
+        - id: states_unsupported_order_identifying_information
+          statement: The response states other unsupported identifying information for an order.
 
   - name: unsupported_order_qualifier
     inputs:
@@ -181,12 +217,17 @@ cases:
         - get_cancellation_policy
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the available information cannot identify the most recent order.
-        - The response presents order-001, order-002, and order-003 as the available order candidates.
-        - The response asks the customer to select an order.
+        - id: states_most_recent_order_cannot_be_identified
+          statement: The response states that the available information cannot identify the most recent order.
+        - id: presents_available_order_candidates
+          statement: The response presents order-001, order-002, and order-003 as the available order candidates.
+        - id: asks_customer_to_select_order
+          statement: The response asks the customer to select an order.
       forbidden_response_criteria:
-        - The response does not state which order is the most recent.
-        - The response does not select an order for the customer.
+        - id: identifies_most_recent_order
+          statement: The response states which order is the most recent.
+        - id: selects_order_for_customer
+          statement: The response selects an order for the customer.
 
   - name: unknown_order
     inputs:
@@ -206,11 +247,15 @@ cases:
         - get_cancellation_policy
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the requested order cannot be found in the current customer context.
+        - id: states_order_not_found_in_customer_context
+          statement: The response states that the requested order cannot be found in the current customer context.
       forbidden_response_criteria:
-        - The response does not state facts about the requested order.
-        - The response does not state or imply that the requested order belongs to another customer.
-        - The response does not state or imply that the requested order exists outside the current customer context.
+        - id: states_requested_order_facts
+          statement: The response states facts about the requested order.
+        - id: states_or_implies_order_belongs_to_another_customer
+          statement: The response states or implies that the requested order belongs to another customer.
+        - id: states_or_implies_order_exists_outside_customer_context
+          statement: The response states or implies that the requested order exists outside the current customer context.
 
   - name: other_customer_order
     inputs:
@@ -230,11 +275,15 @@ cases:
         - get_cancellation_policy
       required_tool_sequence: []
       required_response_criteria:
-        - The response states that the requested order cannot be found in the current customer context.
+        - id: states_order_not_found_in_customer_context
+          statement: The response states that the requested order cannot be found in the current customer context.
       forbidden_response_criteria:
-        - The response does not state facts about the requested order.
-        - The response does not state or imply that the requested order belongs to another customer.
-        - The response does not state or imply that the requested order exists outside the current customer context.
+        - id: states_requested_order_facts
+          statement: The response states facts about the requested order.
+        - id: states_or_implies_order_belongs_to_another_customer
+          statement: The response states or implies that the requested order belongs to another customer.
+        - id: states_or_implies_order_exists_outside_customer_context
+          statement: The response states or implies that the requested order exists outside the current customer context.
 
   - name: shipment_information_failure
     inputs:
@@ -259,12 +308,20 @@ cases:
         - find_order
         - find_shipment
       required_response_criteria:
-        - The response states that the confirmed order status is shipped.
-        - The response states that the detailed shipment progress could not be confirmed.
-        - The response distinguishes the confirmed order status from the unavailable shipment details.
+        - id: states_confirmed_order_status_shipped
+          statement: The response states that the confirmed order status is shipped.
+        - id: states_shipment_progress_could_not_be_confirmed
+          statement: The response states that the detailed shipment progress could not be confirmed.
+        - id: distinguishes_confirmed_order_status_from_unavailable_shipment_details
+          statement: The response distinguishes the confirmed order status from the unavailable shipment details.
       forbidden_response_criteria:
-        - The response does not state that the shipment status is out_for_delivery.
-        - The response does not state a carrier name.
-        - The response does not state a shipment location.
-        - The response does not state a tracking number.
-        - The response does not state an estimated delivery date.
+        - id: states_shipment_status_out_for_delivery
+          statement: The response states that the shipment status is out_for_delivery.
+        - id: states_carrier_name
+          statement: The response states a carrier name.
+        - id: states_shipment_location
+          statement: The response states a shipment location.
+        - id: states_tracking_number
+          statement: The response states a tracking number.
+        - id: states_estimated_delivery_date
+          statement: The response states an estimated delivery date.
