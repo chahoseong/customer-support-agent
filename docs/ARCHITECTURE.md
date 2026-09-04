@@ -123,3 +123,73 @@ Agent 자체는 고객별 Conversation을 저장하지 않습니다. Web Chat은
 Web Chat은 `AgentResult.message`를 Agent 응답으로 표시합니다. `AgentError`는 Agent
 응답으로 Conversation에 저장하지 않고 내부 세부 정보를 제외한 일반적인 오류
 안내로 표시합니다.
+
+## Evaluation pipeline
+
+Evaluation은 고객 문의를 처리하는 Agent 실행 경로와 분리된 검증 흐름입니다.
+Order Evaluation Dataset의 각 case는 Agent 실행 입력과 기대 동작을 제공하고,
+Evaluator는 Agent 실행 결과가 그 기대를 충족하는지 판정합니다.
+
+```mermaid
+flowchart LR
+    Case["Evaluation Dataset Case"]
+    Agent["Agent 실행"]
+    Output["OrderEvalOutput"]
+    Evaluators["Evaluators<br/>Tool 사용 · 최종 응답"]
+    Results["Evaluation 결과<br/>Assertion · EvaluatorFailure"]
+
+    Case -->|"입력"| Agent
+    Agent --> Output
+    Case -->|"평가 기준"| Evaluators
+    Output --> Evaluators
+    Evaluators --> Results
+```
+
+### 구성 요소와 책임
+
+현재 구현된 Evaluation 구성 요소와 각 책임은 다음과 같습니다.
+
+| 구성 요소 | 책임 |
+| --- | --- |
+| [Order Evaluation Dataset](../evals/order/scenario_cases.yaml) | case별 Agent 입력, 기대 Tool 사용과 response criterion을 정의합니다. |
+| [Dataset Loader](../evals/order/dataset.py) | Dataset을 읽고 공통 Tool evaluator와 case별 response evaluator를 연결합니다. |
+| [Tool Use Capture](../evals/order/capture.py) | Agent 실행 중 Model 메시지의 Tool Call과 대응하는 Tool Result를 관측된 Tool 사용으로 변환합니다. |
+| [`OrderEvalOutput`](../evals/order/models.py) | Agent의 최종 응답과 한 실행에서 관측한 Tool 사용을 Evaluator에 전달합니다. |
+| [Tool Evaluators](../evals/order/tool_evaluators.py) | 기대 Tool 사용과 관측된 Tool 사용을 비교합니다. 모든 case에 적용되는 dataset-level evaluator입니다. |
+| [Response Evaluator](../evals/order/response_evaluator.py) | 최종 응답이 하나의 response criterion을 충족하는지 판정합니다. criterion별로 해당 case에 연결되는 case-specific evaluator입니다. |
+
+현재 구성은 Dataset과 Evaluator를 정의하고 연결하는 단계까지 포함합니다. 실제 Agent
+실행, `OrderEvalOutput` 조립, Evaluation report 처리와 Logfire 연결은 #41에서
+구현합니다.
+
+### Evaluator의 역할
+
+Tool Evaluator는 Agent가 답을 만드는 과정에서 Tool을 적절하게 사용했는지
+판정합니다. Response Evaluator는 고객에게 전달할 최종 응답이 case의 response
+criterion을 충족하는지 판정합니다. 두 Evaluator는 같은 case를 서로 다른 관점에서
+독립적으로 평가합니다.
+
+| 구분 | Tool Evaluator | Response Evaluator |
+| --- | --- | --- |
+| 평가 대상 | Tool 선택, arguments, outcome과 명시된 실행 순서 | 최종 응답의 response criterion 충족 여부 |
+| 입력 | case metadata의 기대 Tool 사용과 `OrderEvalOutput.tool_uses` | user message, `AgentResult.message`와 하나의 response criterion |
+| 판정 방식 | 구조화된 값을 비교하는 결정론적 코드 | LLM Judge를 사용하는 의미 판정 |
+| 연결 범위 | Dataset level | Case level |
+| 결과 | Tool 사용 기준별 assertion | response criterion별 assertion |
+
+예를 들어 `order-003`의 상태를 묻는 case에서 Agent가
+`find_order(order_id="order-003")`를 올바르게 호출했지만 최종 응답에서 주문 상태를
+`processing`이라고 말했다고 가정합니다. 이 경우 Tool Evaluator는 Tool 선택과
+arguments가 기준을 충족했다고 판정하지만, Response Evaluator는 주문 상태가
+`delivered`임을 설명해야 한다는 criterion을 충족하지 못했다고 판정합니다. 이처럼
+올바른 Tool 사용이 올바른 최종 응답을 보장하지 않으므로 두 결과를 독립적으로
+평가합니다.
+
+Evaluator가 판정을 완료하면 기준 충족 여부가 assertion으로 기록됩니다. 예외로 인해
+판정을 완료하지 못하면 assertion 대신 `EvaluatorFailure`가 기록됩니다. 한
+Evaluator의 failure는 같은 case의 다른 Evaluator 결과를 failure로 바꾸지 않습니다.
+
+현재 #40까지는 Dataset, `OrderEvalOutput`, Tool Evaluator, Response Evaluator와 이들의
+연결이 구축되어 있습니다. 실제 Agent와 Judge Model을 사용한 전체 Dataset 실행,
+Evaluation report의 표시와 저장, Logfire experiment 및 Trace 연결은 #41의 실행
+경계에 남아 있습니다.
