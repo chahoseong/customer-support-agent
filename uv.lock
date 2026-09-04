@@ -377,6 +377,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "pydantic-ai-slim" },
     { name = "pydantic-evals" },
     { name = "pytest" },
     { name = "ruff" },
@@ -393,6 +394,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.3.1" },
+    { name = "pydantic-ai-slim", specifier = ">=2.36.0" },
     { name = "pydantic-evals", specifier = ">=2.36.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.16.3" },
