@@ -12,10 +12,18 @@ from evals.order.models import (
     ResponseCriterion,
 )
 from evals.order.response_evaluator import ResponseCriterionEvaluator
-from pydantic_ai import ModelRequest, UserPromptPart, capture_run_messages
+from pydantic_ai import (
+    ModelRequest,
+    ModelResponse,
+    ToolCallPart,
+    UserPromptPart,
+    capture_run_messages,
+)
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.settings import ModelSettings
 from pydantic_evals.evaluators import (
     EvaluationReason,
     EvaluatorContext,
@@ -261,6 +269,50 @@ def test_response_criterion_evaluator_rejects_missing_judge_model() -> None:
             criterion_kind="required",
             judge_model=cast(Model, None),
         )
+
+
+def test_response_criterion_evaluator_passes_model_settings_to_judge_model() -> None:
+    received_model_settings: list[ModelSettings | None] = []
+
+    def return_judge_result(
+        _messages: list[ModelMessage],
+        agent_info: AgentInfo,
+    ) -> ModelResponse:
+        received_model_settings.append(agent_info.model_settings)
+        output_tool = agent_info.output_tools[0]
+        return ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name=output_tool.name,
+                    args={
+                        "reason": "The response states that the order was delivered.",
+                        "pass": True,
+                        "score": 1.0,
+                    },
+                )
+            ]
+        )
+
+    criterion = ResponseCriterion(
+        id="states_order_status_delivered",
+        statement="The response states that the order status is delivered.",
+    )
+    context = _create_response_evaluator_context(
+        criterion=criterion,
+        criterion_kind="required",
+        response="Order-003 has been delivered.",
+    )
+    model_settings = ModelSettings(temperature=0.0)
+    evaluator = ResponseCriterionEvaluator(
+        criterion=criterion,
+        criterion_kind="required",
+        judge_model=FunctionModel(return_judge_result),
+        judge_model_settings=model_settings,
+    )
+
+    asyncio.run(evaluator.evaluate(context))
+
+    assert received_model_settings == [model_settings]
 
 
 def test_response_criterion_evaluator_sends_user_message_response_and_target_criterion_to_judge() -> (

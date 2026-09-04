@@ -165,9 +165,11 @@ flowchart LR
 ### Evaluator의 역할
 
 Tool Evaluator는 Agent가 답을 만드는 과정에서 Tool을 적절하게 사용했는지
-판정합니다. Response Evaluator는 고객에게 전달할 최종 응답이 case의 response
-criterion을 충족하는지 판정합니다. 두 Evaluator는 같은 case를 서로 다른 관점에서
-독립적으로 평가합니다.
+판정합니다. Response Evaluator는 각 response criterion에 기술된 행동이 최종 응답에서
+관찰되는지를 Judge로 판정합니다. Required criterion은 해당 행동이 관찰되어야 통과하고,
+Forbidden criterion은 관찰되지 않아야 통과합니다. 따라서 Judge의 행동 관찰 결과와 최종
+Evaluation assertion의 통과 여부는 서로 다른 의미일 수 있습니다. 두 Evaluator는 같은
+case를 서로 다른 관점에서 독립적으로 평가합니다.
 
 | 구분 | Tool Evaluator | Response Evaluator |
 | --- | --- | --- |

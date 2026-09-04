@@ -23,8 +23,8 @@ cases:
         - id: identifies_order_as_order_003
           statement: The response identifies the order as order-003.
       forbidden_response_criteria:
-        - id: states_unverified_order_facts
-          statement: The response states unverified order facts.
+        - id: states_order_facts_other_than_id_and_status
+          statement: The response states an order-003 fact other than its order ID and delivered status.
         - id: states_shipment_facts
           statement: The response states shipment facts.
         - id: states_cancellation_policy_facts
@@ -55,8 +55,8 @@ cases:
       forbidden_response_criteria:
         - id: states_carrier_name
           statement: The response states a carrier name.
-        - id: states_unverified_detailed_shipment_status
-          statement: The response states an unverified detailed shipment status.
+        - id: states_shipment_status_beyond_not_handed_off
+          statement: The response states a shipment status for order-001 other than that it has not yet been handed off to a carrier.
         - id: states_shipment_location
           statement: The response states a shipment location.
         - id: states_estimated_delivery_date
@@ -132,8 +132,8 @@ cases:
       forbidden_response_criteria:
         - id: claims_order_001_was_cancelled
           statement: The response claims that order-001 was cancelled.
-        - id: claims_cancellation_request_was_accepted_or_completed
-          statement: The response claims that a cancellation request was accepted or completed.
+        - id: claims_cancellation_request_was_accepted
+          statement: The response claims that a cancellation request for order-001 was accepted.
 
   - name: non_cancellable_order
     inputs:
@@ -162,8 +162,8 @@ cases:
         - id: states_order_002_cannot_be_cancelled
           statement: The response states that order-002 cannot be cancelled under the current policy.
       forbidden_response_criteria:
-        - id: states_unverified_cancellation_restriction_reason
-          statement: The response states an unverified detailed reason for the cancellation restriction.
+        - id: states_cancellation_restriction_reason_beyond_status_and_policy
+          statement: The response states a reason why order-002 cannot be cancelled other than its shipped status and the policy that permits cancellation only while processing.
         - id: claims_order_002_was_cancelled
           statement: The response claims that order-002 was cancelled.
         - id: claims_order_002_was_modified
@@ -197,8 +197,8 @@ cases:
           statement: The response states product details for an order.
         - id: states_order_placement_time
           statement: The response states when an order was placed.
-        - id: states_unsupported_order_identifying_information
-          statement: The response states other unsupported identifying information for an order.
+        - id: states_order_identifying_information_other_than_available_ids
+          statement: The response states order-identifying information other than the IDs order-001, order-002, and order-003.
 
   - name: unsupported_order_qualifier
     inputs:
